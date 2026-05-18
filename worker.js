@@ -1,7 +1,7 @@
 // Heavy lifting runs here in a Web Worker so the UI stays responsive.
 // Auto-detects WebGPU (fast) and falls back to WASM (CPU).
+// Streams partial results back as each chunk completes.
 
-// Tell the main thread the worker file actually loaded and is running.
 self.postMessage({ type: "worker_alive" });
 
 const TRANSFORMERS_URL =
@@ -90,10 +90,16 @@ self.onmessage = async (e) => {
     }
 
     if (msg.type === "warmup") {
-      // Load the library (so first real run is faster) and detect device.
       await getLib();
       const device = await detectDevice();
       self.postMessage({ type: "device", device, cached: false });
+      return;
+    }
+
+    if (msg.type === "preload") {
+      // Pre-fetch model so it's ready when user clicks Transcribe.
+      await loadPipeline(msg.modelId);
+      self.postMessage({ type: "preload_done", modelId: msg.modelId });
       return;
     }
 
@@ -107,6 +113,7 @@ self.onmessage = async (e) => {
       const totalSeconds = msg.audio.length / 16000;
       self.postMessage({ type: "transcribe_start", totalSeconds });
 
+      const partialChunks = [];
       const result = await pipe(msg.audio, {
         chunk_length_s: 30,
         stride_length_s: 5,
@@ -116,10 +123,20 @@ self.onmessage = async (e) => {
         no_repeat_ngram_size: 3,
         chunk_callback: (chunk) => {
           if (token.cancelled) throw new Error("Cancelled");
-          if (chunk?.timestamp?.[1] != null) {
+          if (chunk && chunk.text && chunk.timestamp) {
+            partialChunks.push({
+              text: chunk.text,
+              timestamp: [chunk.timestamp[0], chunk.timestamp[1]],
+            });
+            // Stream this chunk back so the UI shows it immediately.
             self.postMessage({
-              type: "chunk_progress",
-              elapsed: chunk.timestamp[1],
+              type: "partial",
+              chunk: {
+                text: chunk.text,
+                start: chunk.timestamp[0],
+                end: chunk.timestamp[1],
+              },
+              elapsed: chunk.timestamp[1] || 0,
             });
           }
         },

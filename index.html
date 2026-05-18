@@ -352,12 +352,12 @@
     <h3 class="section-title">Settings</h3>
     <div class="controls">
       <div class="field">
-        <label for="model">Quality</label>
+        <label for="quality">Quality</label>
         <div class="select-wrap">
-          <select id="model">
-            <option value="Xenova/whisper-base" selected>Fast — recommended (~150 MB)</option>
-            <option value="Xenova/whisper-small">Accurate (~500 MB, slower)</option>
-            <option value="onnx-community/whisper-large-v3-turbo">Best — needs WebGPU (~1.6 GB)</option>
+          <select id="quality">
+            <option value="fast" selected>Fast — recommended</option>
+            <option value="accurate">Accurate</option>
+            <option value="best">Best (needs WebGPU)</option>
           </select>
         </div>
       </div>
@@ -447,8 +447,33 @@ const fileRow = $("fileRow");
 const fileName = $("fileName");
 const fileMeta = $("fileMeta");
 const fileRemove = $("fileRemove");
-const modelSel = $("model");
+const qualitySel = $("quality");
 const langSel = $("lang");
+
+// Auto-pick the right model for the chosen quality + language.
+// English uses Distil-Whisper (3-6x faster than regular Whisper for similar accuracy).
+// Other languages need real multilingual Whisper.
+const MODEL_MAP = {
+  fast: {
+    english: "Xenova/distil-small.en",        // ~165 MB, very fast, English
+    multilingual: "Xenova/whisper-base",      // ~150 MB, fast, multilingual
+  },
+  accurate: {
+    english: "Xenova/distil-medium.en",       // ~395 MB, near-Large quality, English
+    multilingual: "Xenova/whisper-small",     // ~490 MB, accurate multilingual
+  },
+  best: {
+    english: "onnx-community/whisper-large-v3-turbo",
+    multilingual: "onnx-community/whisper-large-v3-turbo",
+  },
+};
+
+function pickModel() {
+  const q = qualitySel.value;
+  const isEnglish = langSel.value === "" || langSel.value === "english";
+  const variant = isEnglish ? "english" : "multilingual";
+  return MODEL_MAP[q][variant];
+}
 const startBtn = $("startBtn");
 const cancelBtn = $("cancelBtn");
 const statusEl = $("status");
@@ -475,6 +500,8 @@ let currentFile = null;
 let lastResult = null;
 let device = null;
 let isRunning = false;
+let streamingChunks = [];
+let streamingMeta = { duration: 0, model: "" };
 
 let worker = null;
 let workerBooted = false;
@@ -601,6 +628,11 @@ function setFile(f) {
   startBtn.disabled = false;
   setStatus("Ready to transcribe");
   transcriptCard.classList.remove("visible");
+  // Pre-load the model in the background so first-click is fast.
+  const w = ensureWorker();
+  if (w) {
+    try { w.postMessage({ type: "preload", modelId: pickModel() }); } catch (_) {}
+  }
 }
 function clearFile() {
   currentFile = null;
@@ -626,6 +658,17 @@ fileInput.addEventListener("change", () => {
 fileRemove.addEventListener("click", (e) => {
   e.preventDefault(); e.stopPropagation();
   clearFile();
+});
+
+// If user changes quality or language, pre-load that model in background.
+[qualitySel, langSel].forEach((el) => {
+  el.addEventListener("change", () => {
+    if (!currentFile || isRunning) return;
+    const w = ensureWorker();
+    if (w) {
+      try { w.postMessage({ type: "preload", modelId: pickModel() }); } catch (_) {}
+    }
+  });
 });
 
 // ---- Audio decode (main thread; quick) ----
@@ -710,6 +753,40 @@ function onWorkerMessage(e) {
                 `0:00 / ${formatShortTime(totalAudioSeconds)}`,
                 "Estimating…");
     log(`Audio decoded: ${totalAudioSeconds.toFixed(1)}s`);
+    // Open the transcript card so user sees text appearing live.
+    streamingChunks = [];
+    streamingMeta.duration = totalAudioSeconds;
+    streamingMeta.model = pickModel();
+    transcriptBody.innerHTML = "";
+    const base = (currentFile?.name || "transcript").replace(/\.[^.]+$/, "");
+    transcriptTitle.textContent = base;
+    transcriptSub.textContent =
+      `Transcribing… · ${formatShortTime(totalAudioSeconds)} of audio`;
+    transcriptCard.classList.add("visible");
+    return;
+  }
+
+  if (msg.type === "partial") {
+    // Live-render this chunk as it arrives.
+    const c = msg.chunk;
+    streamingChunks.push({ text: c.text, timestamp: [c.start, c.end] });
+    const div = document.createElement("div");
+    div.className = "seg";
+    const ts = document.createElement("span");
+    ts.className = "ts";
+    ts.textContent = formatShortTime(c.start || 0);
+    const text = document.createElement("span");
+    text.className = "text";
+    text.textContent = (c.text || "").trim();
+    div.appendChild(ts);
+    div.appendChild(text);
+    transcriptBody.appendChild(div);
+    transcriptBody.scrollTop = transcriptBody.scrollHeight;
+    return;
+  }
+
+  if (msg.type === "preload_done") {
+    log("Model ready (preloaded): " + msg.modelId, "success");
     return;
   }
 
@@ -729,18 +806,29 @@ function onWorkerMessage(e) {
 
   if (msg.type === "done") {
     const elapsed = ((performance.now() - tStartTranscribe) / 1000);
+    // Prefer the worker's final result (has full text), fall back to streamed chunks.
+    const finalChunks = (msg.result.chunks && msg.result.chunks.length)
+      ? msg.result.chunks
+      : streamingChunks;
     lastResult = {
-      text: msg.result.text || "",
-      chunks: msg.result.chunks || [],
+      text: msg.result.text || streamingChunks.map(c => c.text).join(" ").trim(),
+      chunks: finalChunks,
       sourceName: currentFile.name,
       duration: totalAudioSeconds,
-      model: modelSel.value,
+      model: streamingMeta.model || pickModel(),
     };
-    renderTranscript(lastResult);
-    log(`Done in ${elapsed.toFixed(1)}s`, "success");
+    // Update transcript header now that we're done; body is already live-rendered.
+    const modelLabel = lastResult.model.split("/").pop()
+      .replace("whisper-", "Whisper ")
+      .replace("distil-", "Distil-")
+      .replace("large-v3-turbo", "Large v3 Turbo");
+    transcriptSub.textContent =
+      `${formatShortTime(totalAudioSeconds)} · ${modelLabel} · ${device === "webgpu" ? "WebGPU" : "CPU"} · ${formatDuration(elapsed)}`;
+    const ratio = totalAudioSeconds / elapsed;
+    log(`Done in ${elapsed.toFixed(1)}s (${ratio.toFixed(1)}x realtime)`, "success");
     setProgress(100, "Finished",
                 `${formatShortTime(totalAudioSeconds)} transcribed`,
-                `Took ${formatDuration(elapsed)}`);
+                `Took ${formatDuration(elapsed)} (${ratio.toFixed(1)}× realtime)`);
     setStatus("Done");
     finishRun();
     return;
@@ -779,6 +867,8 @@ async function transcribe() {
   logDetails.style.display = "none";
   logDetails.open = false;
   downloadFiles = {};
+  streamingChunks = [];
+  streamingMeta = { duration: 0, model: "" };
 
   const w = ensureWorker();
   try {
@@ -788,7 +878,7 @@ async function transcribe() {
     w.postMessage({
       type: "transcribe",
       audio,
-      modelId: modelSel.value,
+      modelId: pickModel(),
       lang: langSel.value || null,
     }, [buf]);
   } catch (e) {

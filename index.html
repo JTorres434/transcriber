@@ -391,6 +391,13 @@
   /* Indeterminate state: when we don't know the % yet, fill the bar
      and let the shimmer be the entire signal of life. */
   .progress-fill.indeterminate { width: 100% !important; opacity: 0.4; }
+  /* Success state: bar fills with green when transcription completes. */
+  .progress-fill.done {
+    background: linear-gradient(90deg, #28A862 0%, #5BD08A 100%) !important;
+    box-shadow: 0 0 16px rgba(40, 168, 98, 0.55);
+  }
+  .progress-fill.done::after { animation: none; opacity: 0; }
+  .progress-row .pct.done { color: var(--success); }
   .progress-meta {
     display: flex; justify-content: space-between;
     margin-top: 10px; font-size: 12.5px; color: var(--ink-soft);
@@ -488,22 +495,94 @@
     position: fixed; bottom: 28px; left: 50%;
     transform: translateX(-50%) translateY(20px);
     background: var(--ink); color: white;
-    padding: 11px 20px; border-radius: 999px;
-    font-size: 13px; font-weight: 500;
-    opacity: 0; transition: opacity .22s var(--ease), transform .22s var(--ease);
+    padding: 12px 20px; border-radius: 999px;
+    font-size: 13.5px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 9px;
+    opacity: 0;
+    transition: opacity .22s var(--ease), transform .28s var(--ease);
     pointer-events: none; box-shadow: var(--shadow-lg);
+    z-index: 50;
   }
   .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success {
+    background: linear-gradient(135deg, #28A862 0%, #5BD08A 100%);
+    box-shadow: 0 12px 32px rgba(40, 168, 98, 0.45),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    padding: 14px 22px;
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+  .toast .check {
+    width: 18px; height: 18px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
 
+  /* ===== Transcript card celebration ===== */
+  @keyframes celebrate {
+    0%   { box-shadow: var(--shadow), 0 0 0 0 rgba(40, 168, 98, 0.5); }
+    50%  { box-shadow: var(--shadow), 0 0 0 8px rgba(40, 168, 98, 0); }
+    100% { box-shadow: var(--shadow), 0 0 0 0 rgba(40, 168, 98, 0); }
+  }
+  .transcript-card.just-done { animation: fadeUp .4s var(--ease), celebrate 1s var(--ease) .15s; }
+
+  @media (max-width: 720px) {
+    .container { padding: 36px 18px 64px; }
+    .controls-row, .cta-bar { padding-left: 22px; padding-right: 22px; }
+    .progress-wrap { padding-left: 22px; padding-right: 22px; }
+    .transcript-header, .transcript-body { padding-left: 22px; padding-right: 22px; }
+    #stallBanner { margin-left: 22px; margin-right: 22px; }
+    h1 { font-size: 36px; }
+    .lede { font-size: 16px; }
+  }
   @media (max-width: 540px) {
-    .container { padding: 32px 16px 64px; }
-    .controls-row, .cta-bar { padding-left: 20px; padding-right: 20px; }
-    .progress-wrap { padding-left: 20px; padding-right: 20px; }
-    .transcript-header, .transcript-body { padding-left: 20px; padding-right: 20px; }
-    #stallBanner { margin-left: 20px; margin-right: 20px; }
-    .drop { padding: 44px 22px; }
-    .cta-bar { flex-direction: column; align-items: stretch; }
-    .status { margin-left: 0; text-align: center; }
+    .container { padding: 28px 14px 56px; }
+    header { margin-bottom: 32px; gap: 10px; }
+    .brand { font-size: 18px; }
+    .pill { padding: 4px 10px; font-size: 11px; }
+    .hero { margin-bottom: 26px; }
+    h1 { font-size: 30px; letter-spacing: -0.02em; }
+    .lede { font-size: 15px; max-width: none; }
+
+    .surface { border-radius: 18px; }
+    .drop { padding: 40px 18px; }
+    .drop-icon { width: 56px; height: 56px; border-radius: 16px; }
+    .drop-title { font-size: 17px; }
+    .drop-hint { font-size: 13px; }
+    .drop-formats { font-size: 10px; letter-spacing: 0.06em; }
+
+    .file-card { padding: 12px 16px; gap: 12px; }
+    .file-icon { width: 36px; height: 36px; }
+    .file-name { font-size: 14px; }
+
+    /* Controls row stacks: quality control + lang dropdown each full-width */
+    .controls-row { padding: 16px; gap: 10px; flex-direction: column; align-items: stretch; }
+    .seg-control { width: 100%; }
+    .seg-btn { flex: 1; }
+    .lang-wrap { width: 100%; }
+
+    /* CTA stacks under settings, full-width button on mobile */
+    .cta-bar { flex-direction: column; align-items: stretch; padding: 16px; gap: 12px; }
+    .btn { width: 100%; padding: 14px 20px; font-size: 15px; }
+    .status { margin: 0; text-align: center; font-size: 13px; }
+
+    .progress-wrap { padding: 16px; }
+    #stallBanner { margin: 12px 16px 0; flex-direction: column; align-items: stretch; }
+    #stallBanner .btn { width: 100%; }
+
+    /* Transcript header: title above, action buttons below in row */
+    .transcript-card { border-radius: 18px; }
+    .transcript-header { padding: 20px 18px 14px; flex-direction: column; align-items: stretch; }
+    .download-row { width: 100%; }
+    .download-row .btn { flex: 1; padding: 10px 14px; font-size: 13px; }
+    .transcript-body { padding: 6px 18px 22px; font-size: 15px; max-height: 380px; }
+    .transcript-title { font-size: 22px; }
+    .seg .ts { width: 44px; font-size: 11px; }
+
+    .toast { left: 14px; right: 14px; bottom: 16px; transform: translateY(20px); }
+    .toast.visible { transform: translateY(0); }
   }
 </style>
 </head>
@@ -938,13 +1017,13 @@ function startTranscribeEstimator(totalSeconds, isWebGpu) {
     const ratio = wall / expected;
     let pct;
     if (ratio < 1) {
-      pct = 5 + 75 * ratio;                          // 5% → 80% over expected duration
+      pct = 5 + 65 * ratio;                          // 5% → 70% over expected duration
     } else {
       const overshoot = ratio - 1;
-      pct = 80 + 19 * (1 - Math.pow(0.55, overshoot)); // 80% → 99% asymptotically
+      pct = 70 + 18 * (1 - Math.pow(0.55, overshoot)); // 70% → 88% asymptote ceiling
     }
     progressIndeterminate = false;
-    targetProgress = Math.min(99, pct);
+    targetProgress = Math.min(88, pct);
     const covered = Math.min(totalSeconds, (targetProgress / 100) * totalSeconds);
     progressDetail.textContent =
       `${formatShortTime(covered)} of ${formatShortTime(totalSeconds)}`;
@@ -1004,9 +1083,27 @@ function resetDlSpeed() {
   dlBytesPrev = 0; dlTimePrev = 0; dlSpeedSmoothed = 0;
 }
 function showToast(msg) {
+  toast.classList.remove("success");
   toast.textContent = msg;
   toast.classList.add("visible");
   setTimeout(() => toast.classList.remove("visible"), 1800);
+}
+function showSuccessToast(msg) {
+  toast.classList.add("success");
+  toast.innerHTML =
+    '<span class="check">' +
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' +
+    '</span>' +
+    '<span></span>';
+  toast.querySelector("span:last-child").textContent = msg;
+  toast.classList.add("visible");
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => {
+      toast.classList.remove("success");
+      toast.innerHTML = "Copied to clipboard";
+    }, 300);
+  }, 3200);
 }
 
 function formatBytes(n) {
@@ -1298,6 +1395,12 @@ function onWorkerMessage(e) {
     setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
                 `Took ${formatDuration(elapsed)} (${ratio.toFixed(1)}× realtime)`);
     progressLabel.classList.remove("working-label");
+    // Celebrate completion: bar turns green, transcript card pulses, success toast.
+    progressFill.classList.add("done");
+    progressPct.classList.add("done");
+    transcriptCard.classList.add("just-done");
+    setTimeout(() => transcriptCard.classList.remove("just-done"), 1200);
+    showSuccessToast(`Transcription complete · ${formatDuration(elapsed)}`);
     setStatus("Done");
     finishRun();
     return;
@@ -1339,6 +1442,8 @@ async function transcribe() {
   streamingMeta = { duration: 0, model: "" };
   resetDlSpeed();
   stopElapsedTicker();
+  progressFill.classList.remove("done");
+  progressPct.classList.remove("done");
 
   const w = ensureWorker();
   try {

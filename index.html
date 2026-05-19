@@ -915,23 +915,36 @@ function hideProgress() {
 }
 
 // ---- Transcription progress estimator ----
-// Drives the bar autonomously based on elapsed time vs. expected duration,
-// since the worker's live_text callback fires unpredictably (sometimes not
-// at all for short files).
+// Drives the bar autonomously based on elapsed time vs. expected duration.
+// Two-phase curve: linear 5→80% over the expected duration, then a slow
+// creep from 80% toward 99% if transcription takes longer. The bar always
+// keeps moving — never plateaus — so it can't look stuck.
 let transcribeEstInterval = null;
 function startTranscribeEstimator(totalSeconds, isWebGpu) {
   stopTranscribeEstimator();
-  const rtGuess = isWebGpu ? 12 : 3;
+  // Realistic per-model speed estimates (realtime multiplier).
+  const quality = qualitySel.value;
+  const rtTable = {
+    fast:     { wasm: 2.5, webgpu: 15 },   // whisper-base
+    accurate: { wasm: 0.8, webgpu: 8 },    // whisper-small
+    best:     { wasm: 0.15, webgpu: 5 },   // whisper-large-v3-turbo
+  };
+  const t = rtTable[quality] || { wasm: 2, webgpu: 10 };
+  const rtGuess = isWebGpu ? t.webgpu : t.wasm;
   const expected = Math.max(2, totalSeconds / rtGuess);
   const startT = performance.now();
   transcribeEstInterval = setInterval(() => {
     const wall = (performance.now() - startT) / 1000;
-    // Asymptote toward 94% — never reaches it without a real `done`.
     const ratio = wall / expected;
-    const pct = 5 + (94 - 5) * (1 - Math.exp(-ratio * 0.8));
+    let pct;
+    if (ratio < 1) {
+      pct = 5 + 75 * ratio;                          // 5% → 80% over expected duration
+    } else {
+      const overshoot = ratio - 1;
+      pct = 80 + 19 * (1 - Math.pow(0.55, overshoot)); // 80% → 99% asymptotically
+    }
     progressIndeterminate = false;
-    targetProgress = Math.min(94, pct);
-    // Also update the "audio covered" detail to feel concrete.
+    targetProgress = Math.min(99, pct);
     const covered = Math.min(totalSeconds, (targetProgress / 100) * totalSeconds);
     progressDetail.textContent =
       `${formatShortTime(covered)} of ${formatShortTime(totalSeconds)}`;

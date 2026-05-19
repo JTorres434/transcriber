@@ -1067,6 +1067,14 @@ const TRANSCRIBE_PHRASES = {
     "Decoding the voice",
     "Picking up every word",
     "Tuning in",
+    "Hearing what's there",
+    "Settling into the audio",
+    "Locking onto the voice",
+    "Cueing up the words",
+    "Catching the first words",
+    "Warming up the ears",
+    "Easing into it",
+    "Calibrating to the speaker",
   ],
   mid: [
     "Getting the exact wording",
@@ -1074,28 +1082,66 @@ const TRANSCRIBE_PHRASES = {
     "Reading between the syllables",
     "Working through the audio",
     "Pulling out the words",
+    "Tracking every syllable",
+    "Making sense of it",
+    "Cross-checking the sounds",
+    "Mapping voice to text",
+    "Following the conversation",
+    "Parsing the speech",
+    "Hearing it clearly now",
+    "Sorting out the speech",
+    "Translating sound to text",
   ],
   late: [
     "Almost there",
     "Polishing the transcript",
     "Putting it all together",
     "Wrapping up",
+    "Final pass",
+    "Fine-tuning the words",
+    "Stitching it together",
+    "Tying up loose ends",
+    "Cleaning the edges",
+    "One last look",
+    "Smoothing it out",
+    "Finishing touches",
   ],
 };
+
+function shufflePhrases(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 let phraseInterval = null;
 let phraseIndex = 0;
+let phrasePool = null;
+let phrasePoolName = "";
 function startTranscribePhrases() {
   stopTranscribePhrases();
+  phraseIndex = 0;
+  phrasePool = null;
+  phrasePoolName = "";
   const update = () => {
     const pct = displayProgress;
-    let pool;
-    if (pct < 30) pool = TRANSCRIBE_PHRASES.early;
-    else if (pct < 70) pool = TRANSCRIBE_PHRASES.mid;
-    else pool = TRANSCRIBE_PHRASES.late;
-    progressEta.textContent = pool[phraseIndex % pool.length] + "…";
+    let poolName;
+    if (pct < 30) poolName = "early";
+    else if (pct < 70) poolName = "mid";
+    else poolName = "late";
+    // Reshuffle whenever we move into a new pool. Within a pool, all phrases
+    // are shown once before any repeat, in random order.
+    if (poolName !== phrasePoolName) {
+      phrasePoolName = poolName;
+      phrasePool = shufflePhrases(TRANSCRIBE_PHRASES[poolName]);
+      phraseIndex = 0;
+    }
+    progressEta.textContent = phrasePool[phraseIndex % phrasePool.length] + "…";
     phraseIndex++;
   };
-  phraseIndex = 0;
   update();
   phraseInterval = setInterval(update, 3200);
 }

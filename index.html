@@ -388,9 +388,28 @@
     );
     animation: shimmer 1.6s linear infinite;
   }
-  /* Indeterminate state: when we don't know the % yet, fill the bar
-     and let the shimmer be the entire signal of life. */
-  .progress-fill.indeterminate { width: 100% !important; opacity: 0.4; }
+  /* Indeterminate state: a flowing coral gradient that travels across the
+     bar. Replaces the old faded-out look. */
+  .progress-fill.indeterminate {
+    width: 100% !important;
+    opacity: 1 !important;
+    background: linear-gradient(
+      90deg,
+      var(--accent-tint) 0%,
+      var(--accent) 35%,
+      #FF8E6E 50%,
+      var(--accent) 65%,
+      var(--accent-tint) 100%
+    );
+    background-size: 220% 100%;
+    animation: indeterminate-flow 1.8s linear infinite;
+    box-shadow: 0 0 12px rgba(226, 90, 60, 0.35);
+  }
+  .progress-fill.indeterminate::after { display: none !important; }
+  @keyframes indeterminate-flow {
+    0%   { background-position: 0% 0%; }
+    100% { background-position: -220% 0%; }
+  }
   /* Success state: bar fills with green when transcription completes. */
   .progress-fill.done {
     background: linear-gradient(90deg, #28A862 0%, #5BD08A 100%) !important;
@@ -987,6 +1006,7 @@ function hideProgress() {
   progressFill.classList.remove("indeterminate");
   progressLabel.classList.remove("working-label");
   stopElapsedTicker();
+  stopLoadingPhrases();
   stopTranscribePhrases();
   stopTranscribeEstimator();
   stopProgressAnimator();
@@ -1108,6 +1128,30 @@ const TRANSCRIBE_PHRASES = {
   ],
 };
 
+// ---- Loading-phase phrases (model setup, before transcription) ----
+const LOADING_PHRASES = [
+  "Getting things ready",
+  "Setting up the model",
+  "Warming up the engine",
+  "Loading the speech model",
+  "Just a moment",
+  "Preparing your transcriber",
+  "Putting things in place",
+  "Spinning up",
+  "Getting the ears ready",
+  "Calibrating",
+];
+const DOWNLOAD_PHRASES = [
+  "Downloading the model",
+  "Fetching the model files",
+  "First-time setup",
+  "Pulling things down",
+  "Caching for next time",
+  "Setting up your transcriber",
+  "One-time download",
+  "Getting everything in place",
+];
+
 function shufflePhrases(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -1115,6 +1159,25 @@ function shufflePhrases(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+let loadingPhraseInterval = null;
+function startLoadingPhrases(pool) {
+  stopLoadingPhrases();
+  const shuffled = shufflePhrases(pool);
+  let i = 0;
+  const update = () => {
+    progressEta.textContent = shuffled[i % shuffled.length] + "…";
+    i++;
+  };
+  update();
+  loadingPhraseInterval = setInterval(update, 3000);
+}
+function stopLoadingPhrases() {
+  if (loadingPhraseInterval) {
+    clearInterval(loadingPhraseInterval);
+    loadingPhraseInterval = null;
+  }
 }
 
 let phraseInterval = null;
@@ -1363,10 +1426,9 @@ function onWorkerMessage(e) {
       const detail = total
         ? `${formatBytes(loaded)} of ${formatBytes(total)}` + (speedStr ? ` · ${speedStr}` : "")
         : `${Object.keys(downloadFiles).length} files`;
-      setProgress(pct, "Downloading model", detail, "First time only — cached after");
-      if (!elapsedTickerInterval) {
-        startElapsedTicker((s) => `${s}s elapsed · first time only`);
-      }
+      setProgress(pct, "Downloading model", detail, undefined);
+      stopElapsedTicker();
+      if (!loadingPhraseInterval) startLoadingPhrases(DOWNLOAD_PHRASES);
       startStallWatcher();
     } else if (d.status === "ready") {
       log("Model ready", "success");
@@ -1376,8 +1438,8 @@ function onWorkerMessage(e) {
       log("Fetching " + d.file);
       downloadFiles[d.file] = { progress: 0, loaded: 0, total: 0 };
       lastDownloadAt = Date.now();
-      if (!elapsedTickerInterval) startElapsedTicker();
-      setProgress(-1, "Connecting", "Reaching Hugging Face…", "Just a moment");
+      if (!loadingPhraseInterval) startLoadingPhrases(DOWNLOAD_PHRASES);
+      setProgress(-1, "Connecting", "Reaching the model server", "");
       startStallWatcher();
     } else if (d.status === "done") {
       if (downloadFiles[d.file]) {
@@ -1403,15 +1465,17 @@ function onWorkerMessage(e) {
       setDeviceLabel(phaseLabels[msg.phase], isLoading ? "loading" : "");
     }
     // Drive an indeterminate progress bar through every loading phase so the
-    // shimmer is the visible "we're working" signal until real % data arrives.
+    // flowing gradient is the visible "we're working" signal until real %
+    // data arrives. Friendly rotating phrases instead of a stopwatch.
     if (!isRunning && isLoading) {
       const phaseDetail = {
         lib_loading: "Starting the speech engine",
-        detect_device: "Almost ready",
-        model_loading: "Preparing model",
+        detect_device: "Picking the fastest path",
+        model_loading: "Preparing the model",
       };
       setProgress(-1, phaseLabels[msg.phase], phaseDetail[msg.phase] || "", "");
-      if (!elapsedTickerInterval) startElapsedTicker();
+      stopElapsedTicker();
+      if (!loadingPhraseInterval) startLoadingPhrases(LOADING_PHRASES);
     }
     return;
   }
@@ -1425,6 +1489,7 @@ function onWorkerMessage(e) {
                 "Listening carefully…");
     // Rotating friendly messages instead of a stopwatch.
     stopElapsedTicker();
+    stopLoadingPhrases();
     startTranscribePhrases();
     // Drive the bar autonomously from elapsed time so it always feels alive.
     startTranscribeEstimator(totalAudioSeconds, device === "webgpu");
@@ -1486,6 +1551,7 @@ function onWorkerMessage(e) {
       `${formatShortTime(totalAudioSeconds)} · ${modelLabel} · ${device === "webgpu" ? "WebGPU" : "CPU"} · ${ratio.toFixed(1)}× realtime`;
     log(`Done in ${elapsed.toFixed(1)}s (${ratio.toFixed(1)}× realtime)`, "success");
     stopElapsedTicker();
+    stopLoadingPhrases();
     stopTranscribePhrases();
     stopTranscribeEstimator();
     setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
@@ -1538,6 +1604,7 @@ async function transcribe() {
   streamingMeta = { duration: 0, model: "" };
   resetDlSpeed();
   stopElapsedTicker();
+  stopLoadingPhrases();
   stopTranscribePhrases();
   progressFill.classList.remove("done");
   progressPct.classList.remove("done");

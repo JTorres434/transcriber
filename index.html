@@ -68,6 +68,22 @@
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.06); opacity: 0.85; }
   }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  @keyframes dotbounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-3px); opacity: 1; }
+  }
+  @keyframes dotpulse {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.25); }
+  }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(226, 90, 60, 0.0); }
+    50% { box-shadow: 0 0 0 5px rgba(226, 90, 60, 0.2); }
+  }
 
   .container { max-width: 720px; margin: 0 auto; padding: 48px 22px 80px; }
 
@@ -103,6 +119,28 @@
   }
   .pill.gpu .dot { background: var(--success); box-shadow: 0 0 0 3px rgba(47, 138, 86, 0.18); }
   .pill.cpu .dot { background: var(--warn); box-shadow: 0 0 0 3px rgba(184, 133, 30, 0.18); }
+  .pill.loading .dot {
+    background: var(--accent);
+    animation: dotpulse 1.4s var(--ease) infinite;
+  }
+
+  /* Animated trailing dots after any label — adds visible motion to text. */
+  .working-label::after {
+    content: "";
+    display: inline-block;
+    width: 1.4em; text-align: left;
+    color: var(--accent);
+    font-weight: 700;
+    margin-left: 1px;
+    animation: ellipsis 1.4s steps(4, end) infinite;
+  }
+  @keyframes ellipsis {
+    0%   { content: "."; }
+    25%  { content: ".."; }
+    50%  { content: "..."; }
+    75%  { content: ""; }
+    100% { content: "."; }
+  }
 
   /* ===== Hero ===== */
   .hero { margin-bottom: 36px; animation: fadeUp .5s var(--ease); }
@@ -327,16 +365,32 @@
     font-size: 14px;
   }
   .progress-bar {
-    height: 8px; background: white;
-    border: 1px solid var(--line); border-radius: 999px; overflow: hidden;
+    height: 10px; background: white;
+    border: 1px solid var(--line); border-radius: 999px;
+    overflow: hidden; position: relative;
     box-shadow: inset 0 1px 2px rgba(20, 22, 30, 0.04);
   }
   .progress-fill {
-    height: 100%;
+    height: 100%; position: relative;
     background: linear-gradient(90deg, var(--accent) 0%, #FF8E6E 100%);
     width: 0%; transition: width .3s var(--ease);
     box-shadow: 0 0 12px rgba(226, 90, 60, 0.5);
+    overflow: hidden;
   }
+  /* Always-moving shimmer so the bar visibly works even when % is stuck */
+  .progress-fill::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.5) 50%,
+      transparent 100%
+    );
+    animation: shimmer 1.6s linear infinite;
+  }
+  /* Indeterminate state: when we don't know the % yet, fill the bar
+     and let the shimmer be the entire signal of life. */
+  .progress-fill.indeterminate { width: 100% !important; opacity: 0.4; }
   .progress-meta {
     display: flex; justify-content: space-between;
     margin-top: 10px; font-size: 12.5px; color: var(--ink-soft);
@@ -789,16 +843,80 @@ function log(msg, level = "") {
   logEl.scrollTop = logEl.scrollHeight;
 }
 function setStatus(msg) { statusEl.textContent = msg; }
-function setProgress(pct, label, detail, eta) {
+function setProgress(pct, label, detail, eta, opts) {
   progressWrap.classList.add("visible");
-  const c = Math.max(0, Math.min(100, pct));
-  progressFill.style.width = c + "%";
-  progressPct.textContent = Math.round(c) + "%";
-  if (label !== undefined) progressLabel.textContent = label;
+  const indeterminate = pct == null || pct < 0;
+  if (indeterminate) {
+    progressFill.classList.add("indeterminate");
+    progressPct.textContent = "";
+  } else {
+    progressFill.classList.remove("indeterminate");
+    const c = Math.max(0, Math.min(100, pct));
+    progressFill.style.width = c + "%";
+    progressPct.textContent = Math.round(c) + "%";
+  }
+  if (label !== undefined) {
+    // active=true means the label gets the animated trailing dots
+    const active = !opts || opts.active !== false;
+    progressLabel.classList.toggle("working-label", active);
+    progressLabel.textContent = label;
+  }
   if (detail !== undefined) progressDetail.textContent = detail;
   if (eta !== undefined) progressEta.textContent = eta;
 }
-function hideProgress() { progressWrap.classList.remove("visible"); }
+function hideProgress() {
+  progressWrap.classList.remove("visible");
+  progressFill.classList.remove("indeterminate");
+  progressLabel.classList.remove("working-label");
+  stopElapsedTicker();
+}
+
+// Always-ticking elapsed timer — visible motion regardless of progress events.
+let elapsedTickerInterval = null;
+let elapsedTickerStart = 0;
+let elapsedTickerFormat = null;
+function startElapsedTicker(formatFn) {
+  stopElapsedTicker();
+  elapsedTickerStart = Date.now();
+  elapsedTickerFormat = formatFn || ((s) => `${s}s elapsed`);
+  elapsedTickerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - elapsedTickerStart) / 1000);
+    progressEta.textContent = elapsedTickerFormat(elapsed);
+  }, 1000);
+}
+function stopElapsedTicker() {
+  if (elapsedTickerInterval) {
+    clearInterval(elapsedTickerInterval);
+    elapsedTickerInterval = null;
+  }
+}
+
+// Track download throughput so we can show MB/s
+let dlBytesPrev = 0;
+let dlTimePrev = 0;
+let dlSpeedSmoothed = 0;
+function computeDlSpeed(loaded) {
+  const now = performance.now();
+  if (dlTimePrev) {
+    const dt = (now - dlTimePrev) / 1000;
+    if (dt > 0.1) {
+      const instant = (loaded - dlBytesPrev) / dt;
+      // Exponential smoothing for less jitter
+      dlSpeedSmoothed = dlSpeedSmoothed
+        ? dlSpeedSmoothed * 0.65 + instant * 0.35
+        : instant;
+      dlBytesPrev = loaded;
+      dlTimePrev = now;
+    }
+  } else {
+    dlBytesPrev = loaded;
+    dlTimePrev = now;
+  }
+  return dlSpeedSmoothed;
+}
+function resetDlSpeed() {
+  dlBytesPrev = 0; dlTimePrev = 0; dlSpeedSmoothed = 0;
+}
 function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add("visible");
@@ -961,21 +1079,29 @@ function onWorkerMessage(e) {
         loaded += f.loaded || 0;
         total += f.total || 0;
       }
-      const pct = total ? (loaded / total) * 100 : 0;
-      setProgress(
-        pct,
-        "Downloading model",
-        total ? `${formatBytes(loaded)} / ${formatBytes(total)}` : `${Object.keys(downloadFiles).length} files`,
-        "First run only — cached afterwards"
-      );
+      const pct = total ? (loaded / total) * 100 : -1;
+      const speed = computeDlSpeed(loaded);
+      const speedStr = speed > 1024
+        ? `${formatBytes(speed)}/s`
+        : "";
+      const detail = total
+        ? `${formatBytes(loaded)} of ${formatBytes(total)}` + (speedStr ? ` · ${speedStr}` : "")
+        : `${Object.keys(downloadFiles).length} files`;
+      setProgress(pct, "Downloading model", detail, "First time only — cached after");
+      if (!elapsedTickerInterval) {
+        startElapsedTicker((s) => `${s}s elapsed · first time only`);
+      }
       startStallWatcher();
     } else if (d.status === "ready") {
       log("Model ready", "success");
       stopStallWatcher();
+      stopElapsedTicker();
     } else if (d.status === "download") {
       log("Fetching " + d.file);
       downloadFiles[d.file] = { progress: 0, loaded: 0, total: 0 };
       lastDownloadAt = Date.now();
+      if (!elapsedTickerInterval) startElapsedTicker();
+      setProgress(-1, "Connecting", "Reaching Hugging Face…", "Just a moment");
       startStallWatcher();
     } else if (d.status === "done") {
       if (downloadFiles[d.file]) {
@@ -989,14 +1115,28 @@ function onWorkerMessage(e) {
 
   if (msg.type === "phase") {
     const phaseLabels = {
-      lib_loading: "Loading library…",
-      lib_loaded: "Library ready",
-      detect_device: "Detecting hardware…",
-      model_loading: "Loading model…",
-      model_ready: "Model ready",
+      lib_loading: "Warming up",
+      lib_loaded: "Ready",
+      detect_device: "Checking your device",
+      model_loading: "Loading model",
+      model_ready: "Ready",
     };
     if (phaseLabels[msg.phase]) {
-      setDeviceLabel(phaseLabels[msg.phase]);
+      const loadingPhases = ["lib_loading", "detect_device", "model_loading"];
+      const isLoading = loadingPhases.includes(msg.phase);
+      setDeviceLabel(phaseLabels[msg.phase], isLoading ? "loading" : "");
+      // Show indeterminate progress for these early phases so the user sees
+      // the shimmer bar moving (proves the page isn't frozen).
+      if (msg.phase === "lib_loading" || msg.phase === "detect_device") {
+        if (!isRunning) {
+          setProgress(-1, phaseLabels[msg.phase],
+            msg.phase === "lib_loading"
+              ? "Loading the speech model engine"
+              : "Picking the fastest path on your machine",
+            "Just a moment");
+          if (!elapsedTickerInterval) startElapsedTicker();
+        }
+      }
     }
     return;
   }
@@ -1006,8 +1146,9 @@ function onWorkerMessage(e) {
     tStartTranscribe = performance.now();
     setStatus("Transcribing…");
     setProgress(5, "Transcribing",
-                `0:00 / ${formatShortTime(totalAudioSeconds)}`,
-                "Generating text…");
+                `0:00 of ${formatShortTime(totalAudioSeconds)}`,
+                "Warming up…");
+    startElapsedTicker((s) => `${s}s elapsed`);
     log(`Audio decoded: ${totalAudioSeconds.toFixed(1)}s`);
     streamingMeta.duration = totalAudioSeconds;
     streamingMeta.model = pickModel();
@@ -1025,17 +1166,16 @@ function onWorkerMessage(e) {
     transcriptBody.textContent = msg.text;
     transcriptBody.scrollTop = transcriptBody.scrollHeight;
 
-    // Update progress bar based on elapsed wall-clock time vs. expected.
     const wall = (performance.now() - tStartTranscribe) / 1000;
-    // Whisper Base ~3x rt on CPU, ~15x on WebGPU. Use these as rough guides.
     const rtGuess = device === "webgpu" ? 12 : 3;
     const expected = totalAudioSeconds / rtGuess;
     const pct = Math.min(95, 5 + (wall / expected) * 90);
-    let etaText = "";
-    if (msg.tps) etaText = msg.tps.toFixed(1) + " tokens/sec";
+    // Detail: how much of the audio has been transcribed roughly.
+    const audioCovered = Math.min(totalAudioSeconds, (pct / 100) * totalAudioSeconds);
     setProgress(pct, "Transcribing",
-      `${Math.round(wall)}s elapsed`,
-      etaText);
+      `${formatShortTime(audioCovered)} of ${formatShortTime(totalAudioSeconds)}`,
+      undefined);
+    // elapsed ticker continues running
     return;
   }
 
@@ -1076,9 +1216,11 @@ function onWorkerMessage(e) {
     transcriptSub.textContent =
       `${formatShortTime(totalAudioSeconds)} · ${modelLabel} · ${device === "webgpu" ? "WebGPU" : "CPU"} · ${ratio.toFixed(1)}× realtime`;
     log(`Done in ${elapsed.toFixed(1)}s (${ratio.toFixed(1)}× realtime)`, "success");
-    setProgress(100, "Finished",
-                `${formatShortTime(totalAudioSeconds)} transcribed`,
+    stopElapsedTicker();
+    setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
                 `Took ${formatDuration(elapsed)} (${ratio.toFixed(1)}× realtime)`);
+    // Make sure the "Finished" label doesn't keep showing animated dots.
+    progressLabel.classList.remove("working-label");
     setStatus("Done");
     finishRun();
     return;
@@ -1118,6 +1260,8 @@ async function transcribe() {
   logDetails.open = false;
   downloadFiles = {};
   streamingMeta = { duration: 0, model: "" };
+  resetDlSpeed();
+  stopElapsedTicker();
 
   const w = ensureWorker();
   try {

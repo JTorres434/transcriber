@@ -405,6 +405,10 @@
         <span id="progressEta"></span>
       </div>
     </div>
+    <div id="stallBanner" style="display:none; margin-top:12px; padding:12px 14px; background:#FFF4E5; border:1px solid #FFD9A8; border-radius:8px; align-items:center; gap:10px; font-size:13px;">
+      <span style="color:#8B5A1A; flex:1;"><strong>Download stalled.</strong> Hugging Face's CDN sometimes hangs one of the model files — retrying usually fixes it.</span>
+      <button id="retryBtn" class="btn small">Retry</button>
+    </div>
     <details class="log" id="logDetails" style="display:none;">
       <summary>Show details</summary>
       <div class="log-body" id="log"></div>
@@ -481,12 +485,63 @@ const downloadSrt = $("downloadSrt");
 const toast = $("toast");
 const devicePill = $("devicePill");
 const deviceLabel = $("deviceLabel");
+const stallBanner = $("stallBanner");
+const retryBtn = $("retryBtn");
 
 let currentFile = null;
 let lastResult = null;
 let device = null;
 let isRunning = false;
 let streamingMeta = { duration: 0, model: "" };
+let lastDownloadAt = 0;
+let stallTimer = null;
+let stalled = false;
+
+function startStallWatcher() {
+  if (stallTimer) return;
+  stallTimer = setInterval(() => {
+    if (!lastDownloadAt) return;
+    const idleMs = Date.now() - lastDownloadAt;
+    if (idleMs > 15000 && !stalled) {
+      stalled = true;
+      showStallWarning();
+    }
+  }, 2000);
+}
+function stopStallWatcher() {
+  if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+  stalled = false;
+  hideStallWarning();
+}
+
+function showStallWarning() {
+  setStatus("Download stalled — try Retry");
+  progressLabel.textContent = "Download stalled";
+  progressDetail.textContent = "Hugging Face CDN may be slow right now";
+  progressEta.textContent = "";
+  stallBanner.style.display = "flex";
+}
+function hideStallWarning() {
+  stallBanner.style.display = "none";
+}
+
+async function retryDownload() {
+  hideStallWarning();
+  log("Retrying download…");
+  // Kill the worker and start fresh. Already-downloaded files are in
+  // browser storage and won't refetch.
+  killWorker();
+  downloadFiles = {};
+  lastDownloadAt = 0;
+  stalled = false;
+  setProgress(0, "Restarting…", "", "");
+  const w = ensureWorker();
+  if (w && currentFile) {
+    setTimeout(() => {
+      w.postMessage({ type: "preload", modelId: pickModel() });
+    }, 300);
+  }
+}
 
 let worker = null;
 let workerBooted = false;
@@ -712,20 +767,40 @@ function onWorkerMessage(e) {
 
   if (msg.type === "load_progress") {
     const d = msg.data;
-    if (d.status === "progress" && d.file && d.progress != null) {
-      downloadFiles[d.file] = d.progress;
-      const vals = Object.values(downloadFiles);
-      const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
-      setProgress(avg, "Downloading model",
-                  `${vals.length} file${vals.length > 1 ? "s" : ""}`,
-                  "First run only — cached afterwards");
+    if (d.status === "progress" && d.file) {
+      downloadFiles[d.file] = {
+        progress: d.progress != null ? d.progress : 0,
+        loaded: d.loaded || 0,
+        total: d.total || 0,
+      };
+      lastDownloadAt = Date.now();
+      let loaded = 0, total = 0;
+      for (const f of Object.values(downloadFiles)) {
+        loaded += f.loaded || 0;
+        total += f.total || 0;
+      }
+      const pct = total ? (loaded / total) * 100 : 0;
+      setProgress(
+        pct,
+        "Downloading model",
+        total ? `${formatBytes(loaded)} / ${formatBytes(total)}` : `${Object.keys(downloadFiles).length} files`,
+        "First run only — cached afterwards"
+      );
+      startStallWatcher();
     } else if (d.status === "ready") {
       log("Model ready", "success");
+      stopStallWatcher();
     } else if (d.status === "download") {
       log("Fetching " + d.file);
-      downloadFiles[d.file] = 0;
+      downloadFiles[d.file] = { progress: 0, loaded: 0, total: 0 };
+      lastDownloadAt = Date.now();
+      startStallWatcher();
     } else if (d.status === "done") {
-      downloadFiles[d.file] = 100;
+      if (downloadFiles[d.file]) {
+        downloadFiles[d.file].progress = 100;
+        downloadFiles[d.file].loaded = downloadFiles[d.file].total || downloadFiles[d.file].loaded;
+      }
+      lastDownloadAt = Date.now();
     }
     return;
   }
@@ -881,6 +956,7 @@ async function transcribe() {
   }
 }
 
+retryBtn.addEventListener("click", retryDownload);
 cancelBtn.addEventListener("click", () => {
   // Hard cancel: terminate the worker. Guarantees the UI unsticks.
   // Worker will be reborn on the next transcribe.

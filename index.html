@@ -987,6 +987,7 @@ function hideProgress() {
   progressFill.classList.remove("indeterminate");
   progressLabel.classList.remove("working-label");
   stopElapsedTicker();
+  stopTranscribePhrases();
   stopTranscribeEstimator();
   stopProgressAnimator();
   displayProgress = 0; targetProgress = -1; progressIndeterminate = false;
@@ -1054,6 +1055,52 @@ function stopElapsedTicker() {
     clearInterval(elapsedTickerInterval);
     elapsedTickerInterval = null;
   }
+}
+
+// ---- Friendly rotating status messages during transcription ----
+// Replaces the seconds-elapsed counter with personable phrases that change
+// based on how far along the bar is. Feels like an assistant doing the work
+// rather than a stopwatch.
+const TRANSCRIBE_PHRASES = {
+  early: [
+    "Listening carefully",
+    "Decoding the voice",
+    "Picking up every word",
+    "Tuning in",
+  ],
+  mid: [
+    "Getting the exact wording",
+    "Catching the details",
+    "Reading between the syllables",
+    "Working through the audio",
+    "Pulling out the words",
+  ],
+  late: [
+    "Almost there",
+    "Polishing the transcript",
+    "Putting it all together",
+    "Wrapping up",
+  ],
+};
+let phraseInterval = null;
+let phraseIndex = 0;
+function startTranscribePhrases() {
+  stopTranscribePhrases();
+  const update = () => {
+    const pct = displayProgress;
+    let pool;
+    if (pct < 30) pool = TRANSCRIBE_PHRASES.early;
+    else if (pct < 70) pool = TRANSCRIBE_PHRASES.mid;
+    else pool = TRANSCRIBE_PHRASES.late;
+    progressEta.textContent = pool[phraseIndex % pool.length] + "…";
+    phraseIndex++;
+  };
+  phraseIndex = 0;
+  update();
+  phraseInterval = setInterval(update, 3200);
+}
+function stopTranscribePhrases() {
+  if (phraseInterval) { clearInterval(phraseInterval); phraseInterval = null; }
 }
 
 // Track download throughput so we can show MB/s
@@ -1329,8 +1376,10 @@ function onWorkerMessage(e) {
     setStatus("Transcribing…");
     setProgress(5, "Transcribing",
                 `0:00 of ${formatShortTime(totalAudioSeconds)}`,
-                "");
-    startElapsedTicker((s) => `${s}s elapsed`);
+                "Listening carefully…");
+    // Rotating friendly messages instead of a stopwatch.
+    stopElapsedTicker();
+    startTranscribePhrases();
     // Drive the bar autonomously from elapsed time so it always feels alive.
     startTranscribeEstimator(totalAudioSeconds, device === "webgpu");
     log(`Audio decoded: ${totalAudioSeconds.toFixed(1)}s`);
@@ -1391,6 +1440,7 @@ function onWorkerMessage(e) {
       `${formatShortTime(totalAudioSeconds)} · ${modelLabel} · ${device === "webgpu" ? "WebGPU" : "CPU"} · ${ratio.toFixed(1)}× realtime`;
     log(`Done in ${elapsed.toFixed(1)}s (${ratio.toFixed(1)}× realtime)`, "success");
     stopElapsedTicker();
+    stopTranscribePhrases();
     stopTranscribeEstimator();
     setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
                 `Took ${formatDuration(elapsed)} (${ratio.toFixed(1)}× realtime)`);
@@ -1442,6 +1492,7 @@ async function transcribe() {
   streamingMeta = { duration: 0, model: "" };
   resetDlSpeed();
   stopElapsedTicker();
+  stopTranscribePhrases();
   progressFill.classList.remove("done");
   progressPct.classList.remove("done");
 

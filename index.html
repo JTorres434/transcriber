@@ -843,20 +843,59 @@ function log(msg, level = "") {
   logEl.scrollTop = logEl.scrollHeight;
 }
 function setStatus(msg) { statusEl.textContent = msg; }
+
+// ---- Smoothed progress animator ----
+// All progress goes through `targetProgress`. A rAF loop eases the rendered
+// value toward the target so jumps (e.g. 5% → 100%) animate smoothly instead
+// of snapping.
+let targetProgress = -1; // -1 means indeterminate
+let displayProgress = 0;
+let progressRaf = null;
+let progressIndeterminate = false;
+
+function ensureProgressAnimator() {
+  if (progressRaf) return;
+  let lastT = performance.now();
+  const tick = (t) => {
+    const dt = Math.min(0.1, (t - lastT) / 1000);
+    lastT = t;
+    if (progressIndeterminate) {
+      // Bar is 100%-filled with shimmer carrying the signal
+      displayProgress = 100;
+    } else {
+      const diff = targetProgress - displayProgress;
+      if (Math.abs(diff) < 0.15) {
+        displayProgress = targetProgress;
+      } else {
+        // Speed proportional to distance — eases naturally toward target.
+        // Min speed of 8%/sec guarantees visible motion on small diffs.
+        const speed = Math.max(8, Math.abs(diff) * 3);
+        displayProgress += Math.sign(diff) * Math.min(Math.abs(diff), speed * dt);
+      }
+    }
+    progressFill.style.width = displayProgress + "%";
+    progressPct.textContent = progressIndeterminate ? "" : Math.round(displayProgress) + "%";
+    progressRaf = requestAnimationFrame(tick);
+  };
+  progressRaf = requestAnimationFrame(tick);
+}
+function stopProgressAnimator() {
+  if (progressRaf) { cancelAnimationFrame(progressRaf); progressRaf = null; }
+}
+
 function setProgress(pct, label, detail, eta, opts) {
   progressWrap.classList.add("visible");
   const indeterminate = pct == null || pct < 0;
+  progressIndeterminate = indeterminate;
   if (indeterminate) {
     progressFill.classList.add("indeterminate");
-    progressPct.textContent = "";
+    targetProgress = -1;
   } else {
     progressFill.classList.remove("indeterminate");
-    const c = Math.max(0, Math.min(100, pct));
-    progressFill.style.width = c + "%";
-    progressPct.textContent = Math.round(c) + "%";
+    targetProgress = Math.max(0, Math.min(100, pct));
   }
+  ensureProgressAnimator();
   if (label !== undefined) {
-    // active=true means the label gets the animated trailing dots
     const active = !opts || opts.active !== false;
     progressLabel.classList.toggle("working-label", active);
     progressLabel.textContent = label;
@@ -869,6 +908,40 @@ function hideProgress() {
   progressFill.classList.remove("indeterminate");
   progressLabel.classList.remove("working-label");
   stopElapsedTicker();
+  stopTranscribeEstimator();
+  stopProgressAnimator();
+  displayProgress = 0; targetProgress = -1; progressIndeterminate = false;
+  progressFill.style.width = "0%";
+}
+
+// ---- Transcription progress estimator ----
+// Drives the bar autonomously based on elapsed time vs. expected duration,
+// since the worker's live_text callback fires unpredictably (sometimes not
+// at all for short files).
+let transcribeEstInterval = null;
+function startTranscribeEstimator(totalSeconds, isWebGpu) {
+  stopTranscribeEstimator();
+  const rtGuess = isWebGpu ? 12 : 3;
+  const expected = Math.max(2, totalSeconds / rtGuess);
+  const startT = performance.now();
+  transcribeEstInterval = setInterval(() => {
+    const wall = (performance.now() - startT) / 1000;
+    // Asymptote toward 94% — never reaches it without a real `done`.
+    const ratio = wall / expected;
+    const pct = 5 + (94 - 5) * (1 - Math.exp(-ratio * 0.8));
+    progressIndeterminate = false;
+    targetProgress = Math.min(94, pct);
+    // Also update the "audio covered" detail to feel concrete.
+    const covered = Math.min(totalSeconds, (targetProgress / 100) * totalSeconds);
+    progressDetail.textContent =
+      `${formatShortTime(covered)} of ${formatShortTime(totalSeconds)}`;
+  }, 120);
+}
+function stopTranscribeEstimator() {
+  if (transcribeEstInterval) {
+    clearInterval(transcribeEstInterval);
+    transcribeEstInterval = null;
+  }
 }
 
 // Always-ticking elapsed timer — visible motion regardless of progress events.
@@ -1117,26 +1190,25 @@ function onWorkerMessage(e) {
     const phaseLabels = {
       lib_loading: "Warming up",
       lib_loaded: "Ready",
-      detect_device: "Checking your device",
+      detect_device: "Getting ready",
       model_loading: "Loading model",
-      model_ready: "Ready",
+      model_ready: "Model ready",
     };
+    const loadingPhases = ["lib_loading", "detect_device", "model_loading"];
+    const isLoading = loadingPhases.includes(msg.phase);
     if (phaseLabels[msg.phase]) {
-      const loadingPhases = ["lib_loading", "detect_device", "model_loading"];
-      const isLoading = loadingPhases.includes(msg.phase);
       setDeviceLabel(phaseLabels[msg.phase], isLoading ? "loading" : "");
-      // Show indeterminate progress for these early phases so the user sees
-      // the shimmer bar moving (proves the page isn't frozen).
-      if (msg.phase === "lib_loading" || msg.phase === "detect_device") {
-        if (!isRunning) {
-          setProgress(-1, phaseLabels[msg.phase],
-            msg.phase === "lib_loading"
-              ? "Loading the speech model engine"
-              : "Picking the fastest path on your machine",
-            "Just a moment");
-          if (!elapsedTickerInterval) startElapsedTicker();
-        }
-      }
+    }
+    // Drive an indeterminate progress bar through every loading phase so the
+    // shimmer is the visible "we're working" signal until real % data arrives.
+    if (!isRunning && isLoading) {
+      const phaseDetail = {
+        lib_loading: "Starting the speech engine",
+        detect_device: "Almost ready",
+        model_loading: "Preparing model",
+      };
+      setProgress(-1, phaseLabels[msg.phase], phaseDetail[msg.phase] || "", "");
+      if (!elapsedTickerInterval) startElapsedTicker();
     }
     return;
   }
@@ -1147,8 +1219,10 @@ function onWorkerMessage(e) {
     setStatus("Transcribing…");
     setProgress(5, "Transcribing",
                 `0:00 of ${formatShortTime(totalAudioSeconds)}`,
-                "Warming up…");
+                "");
     startElapsedTicker((s) => `${s}s elapsed`);
+    // Drive the bar autonomously from elapsed time so it always feels alive.
+    startTranscribeEstimator(totalAudioSeconds, device === "webgpu");
     log(`Audio decoded: ${totalAudioSeconds.toFixed(1)}s`);
     streamingMeta.duration = totalAudioSeconds;
     streamingMeta.model = pickModel();
@@ -1162,20 +1236,10 @@ function onWorkerMessage(e) {
   }
 
   if (msg.type === "live_text") {
-    // Render cumulative text as it's generated — proves it's not stuck.
+    // Render cumulative text as it's generated. The progress bar is driven
+    // by the estimator above, so we don't touch the bar here.
     transcriptBody.textContent = msg.text;
     transcriptBody.scrollTop = transcriptBody.scrollHeight;
-
-    const wall = (performance.now() - tStartTranscribe) / 1000;
-    const rtGuess = device === "webgpu" ? 12 : 3;
-    const expected = totalAudioSeconds / rtGuess;
-    const pct = Math.min(95, 5 + (wall / expected) * 90);
-    // Detail: how much of the audio has been transcribed roughly.
-    const audioCovered = Math.min(totalAudioSeconds, (pct / 100) * totalAudioSeconds);
-    setProgress(pct, "Transcribing",
-      `${formatShortTime(audioCovered)} of ${formatShortTime(totalAudioSeconds)}`,
-      undefined);
-    // elapsed ticker continues running
     return;
   }
 
@@ -1217,9 +1281,9 @@ function onWorkerMessage(e) {
       `${formatShortTime(totalAudioSeconds)} · ${modelLabel} · ${device === "webgpu" ? "WebGPU" : "CPU"} · ${ratio.toFixed(1)}× realtime`;
     log(`Done in ${elapsed.toFixed(1)}s (${ratio.toFixed(1)}× realtime)`, "success");
     stopElapsedTicker();
+    stopTranscribeEstimator();
     setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
                 `Took ${formatDuration(elapsed)} (${ratio.toFixed(1)}× realtime)`);
-    // Make sure the "Finished" label doesn't keep showing animated dots.
     progressLabel.classList.remove("working-label");
     setStatus("Done");
     finishRun();

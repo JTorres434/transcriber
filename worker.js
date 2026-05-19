@@ -1,6 +1,5 @@
-// Heavy lifting runs here in a Web Worker so the UI stays responsive.
-// Auto-detects WebGPU (fast) and falls back to WASM (CPU).
-// Streams partial results back as each chunk completes.
+// Web Worker — runs Whisper without freezing the UI.
+// Posts phase + live-text updates so the UI can show real progress.
 
 self.postMessage({ type: "worker_alive" });
 
@@ -11,11 +10,11 @@ let _libPromise = null;
 async function getLib() {
   if (!_libPromise) {
     _libPromise = (async () => {
-      self.postMessage({ type: "lib_loading" });
+      self.postMessage({ type: "phase", phase: "lib_loading" });
       const mod = await import(TRANSFORMERS_URL);
       mod.env.allowLocalModels = false;
       mod.env.useBrowserCache = true;
-      self.postMessage({ type: "lib_loaded" });
+      self.postMessage({ type: "phase", phase: "lib_loaded" });
       return mod;
     })().catch((err) => {
       _libPromise = null;
@@ -31,6 +30,7 @@ let detectedDevice = null;
 
 async function detectDevice() {
   if (detectedDevice) return detectedDevice;
+  self.postMessage({ type: "phase", phase: "detect_device" });
   if (!("gpu" in navigator)) {
     detectedDevice = "wasm";
     return detectedDevice;
@@ -39,7 +39,7 @@ async function detectDevice() {
     const adapter = await Promise.race([
       navigator.gpu.requestAdapter(),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("WebGPU detection timed out")), 3000)
+        setTimeout(() => reject(new Error("WebGPU timeout")), 3000)
       ),
     ]);
     detectedDevice = adapter ? "webgpu" : "wasm";
@@ -58,6 +58,7 @@ async function loadPipeline(modelId) {
     return cachedPipelines.get(cacheKey);
   }
   self.postMessage({ type: "device", device, cached: false });
+  self.postMessage({ type: "phase", phase: "model_loading", modelId });
 
   let dtype;
   if (device === "webgpu") {
@@ -76,13 +77,13 @@ async function loadPipeline(modelId) {
     },
   });
 
+  self.postMessage({ type: "phase", phase: "model_ready", modelId });
   cachedPipelines.set(cacheKey, pipe);
   return pipe;
 }
 
 self.onmessage = async (e) => {
   const msg = e.data;
-
   try {
     if (msg.type === "cancel") {
       cancelToken.cancelled = true;
@@ -97,7 +98,6 @@ self.onmessage = async (e) => {
     }
 
     if (msg.type === "preload") {
-      // Pre-fetch model so it's ready when user clicks Transcribe.
       await loadPipeline(msg.modelId);
       self.postMessage({ type: "preload_done", modelId: msg.modelId });
       return;
@@ -113,7 +113,26 @@ self.onmessage = async (e) => {
       const totalSeconds = msg.audio.length / 16000;
       self.postMessage({ type: "transcribe_start", totalSeconds });
 
-      const partialChunks = [];
+      // Throttled live-text updates — at most every 200ms. transformers.js v3
+      // calls callback_function on every generation step with the cumulative
+      // decoded text in item[0].output_text. We use this for both liveness
+      // (UI shows text growing) and cancellation.
+      let lastUpdate = 0;
+      const callback_function = (item) => {
+        if (token.cancelled) throw new Error("Cancelled");
+        const now = Date.now();
+        if (now - lastUpdate < 200) return;
+        lastUpdate = now;
+        const last = Array.isArray(item) ? item[0] : item;
+        if (last && (last.output_text || last.text)) {
+          self.postMessage({
+            type: "live_text",
+            text: last.output_text || last.text || "",
+            tps: last.tps || null,
+          });
+        }
+      };
+
       const result = await pipe(msg.audio, {
         chunk_length_s: 30,
         stride_length_s: 5,
@@ -121,28 +140,8 @@ self.onmessage = async (e) => {
         language: msg.lang || null,
         task: "transcribe",
         no_repeat_ngram_size: 3,
-        chunk_callback: (chunk) => {
-          if (token.cancelled) throw new Error("Cancelled");
-          if (chunk && chunk.text && chunk.timestamp) {
-            partialChunks.push({
-              text: chunk.text,
-              timestamp: [chunk.timestamp[0], chunk.timestamp[1]],
-            });
-            // Stream this chunk back so the UI shows it immediately.
-            self.postMessage({
-              type: "partial",
-              chunk: {
-                text: chunk.text,
-                start: chunk.timestamp[0],
-                end: chunk.timestamp[1],
-              },
-              elapsed: chunk.timestamp[1] || 0,
-            });
-          }
-        },
-        callback_function: () => {
-          if (token.cancelled) throw new Error("Cancelled");
-        },
+        force_full_sequences: false,
+        callback_function,
       });
 
       self.postMessage({ type: "done", result });

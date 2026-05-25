@@ -1212,6 +1212,12 @@ function stopTranscribePhrases() {
   if (phraseInterval) { clearInterval(phraseInterval); phraseInterval = null; }
 }
 
+// Monotonic download counters — never decrease, smoothing out the
+// transformers.js multi-file discovery jitter.
+let monoLoaded = 0;
+let monoTotal = 0;
+let monoPct = 0;
+
 // Track download throughput so we can show MB/s
 let dlBytesPrev = 0;
 let dlTimePrev = 0;
@@ -1237,6 +1243,7 @@ function computeDlSpeed(loaded) {
 }
 function resetDlSpeed() {
   dlBytesPrev = 0; dlTimePrev = 0; dlSpeedSmoothed = 0;
+  monoLoaded = 0; monoTotal = 0; monoPct = 0;
 }
 function showToast(msg) {
   toast.classList.remove("success");
@@ -1419,13 +1426,19 @@ function onWorkerMessage(e) {
         loaded += f.loaded || 0;
         total += f.total || 0;
       }
-      const pct = total ? (loaded / total) * 100 : -1;
-      const speed = computeDlSpeed(loaded);
+      // Monotonic numbers: prevent the % and the "of XXX MB" total from
+      // ever decreasing when a new file's total gets registered before
+      // its loaded bytes catch up.
+      monoLoaded = Math.max(monoLoaded, loaded);
+      monoTotal = Math.max(monoTotal, total);
+      const rawPct = monoTotal ? (monoLoaded / monoTotal) * 100 : -1;
+      monoPct = Math.max(monoPct, rawPct);
+      const speed = computeDlSpeed(monoLoaded);
       const speedStr = speed > 1024 ? `${formatBytes(speed)}/s` : "";
-      const detail = total
-        ? `${formatBytes(loaded)} of ${formatBytes(total)}` + (speedStr ? ` · ${speedStr}` : "")
+      const detail = monoTotal
+        ? `${formatBytes(monoLoaded)} of ${formatBytes(monoTotal)}` + (speedStr ? ` · ${speedStr}` : "")
         : `${Object.keys(downloadFiles).length} files`;
-      setProgress(pct, "Downloading model", detail, undefined);
+      setProgress(monoPct, "Downloading model", detail, undefined);
       stopElapsedTicker();
       if (!loadingPhraseInterval) startLoadingPhrases(DOWNLOAD_PHRASES);
       startStallWatcher();

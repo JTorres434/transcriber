@@ -22,6 +22,7 @@
     --bg-gradient-2: #F0E4D2;
     --surface: #FFFFFF;
     --surface-2: #FCFAF6;
+    --surface-elevated: #FFFFFF;
     --ink: #15161E;
     --ink-soft: #4B4E5C;
     --muted: #8E92A2;
@@ -50,6 +51,7 @@
     --bg-gradient-2: #1F2536;
     --surface: #1E2029;
     --surface-2: #25272F;
+    --surface-elevated: #353A48;
     --ink: #ECEDF2;
     --ink-soft: #B5B8C5;
     --muted: #7C8094;
@@ -300,8 +302,8 @@
   }
   .seg-btn:hover { color: var(--ink); }
   .seg-btn.active {
-    background: var(--surface); color: var(--ink);
-    box-shadow: var(--shadow-xs);
+    background: var(--surface-elevated); color: var(--ink);
+    box-shadow: var(--shadow-sm), 0 0 0 0.5px var(--line-strong);
     font-weight: 600;
   }
 

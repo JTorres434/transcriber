@@ -339,6 +339,14 @@
     white-space: nowrap;
   }
   .seg-btn:hover { color: var(--ink); }
+  .seg-icon { display: inline-block; font-size: 12px; margin-right: 2px; }
+  .seg-btn[data-quality="cloud"].active {
+    background: linear-gradient(135deg, var(--accent) 0%, #FF8E6E 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(226, 90, 60, 0.35);
+  }
+  .seg-btn[data-quality="cloud"].active .seg-icon { color: white; }
+  .seg-btn[data-quality="cloud"]:not(.active) .seg-icon { color: var(--accent); }
   .seg-btn.active {
     background: var(--surface-elevated); color: var(--ink);
     box-shadow: var(--shadow-sm), 0 0 0 0.5px var(--line-strong);
@@ -1213,13 +1221,15 @@
     </div>
 
     <div class="controls-row surface-divide">
-      <div class="seg-control" id="qualityControl" role="tablist" aria-label="Quality">
-        <button type="button" class="seg-btn active" data-quality="fast"
-                title="Whisper Base · fast and accurate · recommended">Accurate</button>
-        <button type="button" class="seg-btn" data-quality="accurate"
-                title="Whisper Small · catches more detail · takes longer">Thorough</button>
+      <div class="seg-control" id="qualityControl" role="tablist" aria-label="Mode">
+        <button type="button" class="seg-btn active" data-quality="cloud"
+                title="Whisper Large v3 Turbo · runs on our servers · fastest + highest quality">
+          <span class="seg-icon">☁</span> Cloud
+        </button>
+        <button type="button" class="seg-btn" data-quality="fast"
+                title="Whisper Base · runs in your browser · private, no upload">Local Fast</button>
         <button type="button" class="seg-btn" data-quality="best"
-                title="Whisper Large v3 Turbo · highest quality · much slower without a GPU">Meticulous</button>
+                title="Whisper Large v3 Turbo · runs in your browser · needs WebGPU">Local Best</button>
       </div>
       <div class="lang-wrap">
         <select id="lang" aria-label="Language">
@@ -1249,9 +1259,9 @@
 
     <!-- Hidden select kept for backwards-compatible JS that reads #quality.value -->
     <select id="quality" style="display:none;" aria-hidden="true">
-      <option value="fast" selected>Fast</option>
-      <option value="accurate">Accurate</option>
-      <option value="best">Best</option>
+      <option value="cloud" selected>Cloud</option>
+      <option value="fast">Local Fast</option>
+      <option value="best">Local Best</option>
     </select>
 
     <div class="cta-bar">
@@ -1457,28 +1467,22 @@ const fileRemove = $("fileRemove");
 const qualitySel = $("quality");
 const langSel = $("lang");
 
-// English-only variants (onnx-community) shave the decoder vocab and are
-// modestly faster than the multilingual versions. Non-English uses the
-// multilingual model.
+// English-only variants are modestly faster than multilingual.
+// Cloud mode bypasses local Whisper entirely — goes to Groq API.
 const MODEL_MAP = {
   fast: {
-    en:    "onnx-community/whisper-base.en",        // ~150 MB, English-only, slight speed bump
-    multi: "Xenova/whisper-base",                   // ~150 MB, multilingual
-  },
-  accurate: {
-    en:    "onnx-community/whisper-small.en",       // ~490 MB, English-only
-    multi: "Xenova/whisper-small",                  // ~490 MB, multilingual
+    en:    "onnx-community/whisper-base.en",
+    multi: "Xenova/whisper-base",
   },
   best: {
-    en:    "onnx-community/whisper-large-v3-turbo", // ~800 MB, needs WebGPU for usable speed
+    en:    "onnx-community/whisper-large-v3-turbo",
     multi: "onnx-community/whisper-large-v3-turbo",
   },
 };
-
+function isCloudMode() { return qualitySel.value === "cloud"; }
 function pickModel() {
+  if (isCloudMode()) return null;
   const quality = MODEL_MAP[qualitySel.value] || MODEL_MAP.fast;
-  // Empty language value = auto-detect. Default to English (most common).
-  // Explicit non-English picks route to multilingual model.
   const lang = (langSel.value || "").toLowerCase();
   const isEnglish = lang === "" || lang === "english";
   return quality[isEnglish ? "en" : "multi"];
@@ -2400,8 +2404,20 @@ async function transcribe() {
   progressFill.classList.remove("done");
   progressPct.classList.remove("done");
 
+  // Branch: Cloud mode skips the worker entirely.
+  if (isCloudMode()) {
+    runCloudTranscription().catch((e) => {
+      log("Cloud error: " + (e.message || e), "error");
+      setStatus("Failed");
+      logDetails.open = true;
+      finishRun();
+    });
+    return;
+  }
+
   const w = ensureWorker();
   try {
+    // Local: still need to decode for waveform peaks; then send to worker.
     const audio = await decodeAudio(currentFile);
     log(`Decoded ${(audio.length / 16000).toFixed(1)}s of audio`);
     const buf = audio.buffer;
@@ -2961,6 +2977,25 @@ let clerkReady = false;
 let proConfigOk = false;
 let userState = { pro: false, used: 0, limit: 2 };
 
+function disableCloudOption(reason) {
+  const cloudBtn = document.querySelector('.seg-btn[data-quality="cloud"]');
+  if (!cloudBtn) return;
+  cloudBtn.disabled = true;
+  cloudBtn.title = reason || "Cloud unavailable";
+  cloudBtn.style.opacity = "0.5";
+  cloudBtn.style.cursor = "not-allowed";
+  // If cloud is currently selected, fall back to Local Fast
+  if (qualitySel.value === "cloud") {
+    qualitySel.value = "fast";
+    qualitySel.dispatchEvent(new Event("change", { bubbles: true }));
+    const fastBtn = document.querySelector('.seg-btn[data-quality="fast"]');
+    if (fastBtn) {
+      document.querySelectorAll(".seg-btn").forEach(b => b.classList.remove("active"));
+      fastBtn.classList.add("active");
+    }
+  }
+}
+
 async function fetchConfig() {
   try {
     const r = await fetch("/api/config", { cache: "no-store" });
@@ -2971,14 +3006,19 @@ async function fetchConfig() {
 
 async function initClerk() {
   const cfg = await fetchConfig();
-  if (!cfg || !cfg.proEnabled || !cfg.clerkPublishableKey) {
-    // Pro features not configured — hide all Pro UI gracefully.
+  if (!cfg || !cfg.clerkPublishableKey) {
+    // No auth configured — hide all gated UI, including Cloud option.
     signInBtn.hidden = true;
     upgradeCta.hidden = true;
     aiSummaryBtn.hidden = true;
+    disableCloudOption("Cloud unavailable — server not configured");
     return;
   }
-  proConfigOk = true;
+  proConfigOk = !!cfg.proEnabled;
+  cloudConfigOk = !!cfg.cloudEnabled;
+  if (!cloudConfigOk) {
+    disableCloudOption("Cloud unavailable — server not configured");
+  }
   // Dynamically import Clerk JS via esm.sh (cleanest for vanilla pages).
   let ClerkCtor;
   try {
@@ -3261,6 +3301,134 @@ document.addEventListener("transcript:done", () => {
   aiSummaryBtn.hidden = !proConfigOk;
   aiSummaryCard.hidden = true;
 });
+
+// ---- Cloud transcription flow ----
+let cloudConfigOk = false;
+async function runCloudTranscription() {
+  if (!cloudConfigOk) {
+    log("Cloud not configured on this deploy", "error");
+    showToast("Cloud unavailable — switch to Local Fast / Local Best");
+    finishRun();
+    return;
+  }
+  if (!clerkReady || !clerk.user) {
+    log("Sign in required for cloud transcription", "error");
+    if (clerk) clerk.openSignIn({
+      afterSignInUrl: window.location.pathname,
+      afterSignUpUrl: window.location.pathname,
+    });
+    finishRun();
+    return;
+  }
+
+  setStatus("Uploading audio…");
+  setProgress(-1, "Uploading audio", currentFile.name, "");
+  startLoadingPhrases(["Uploading", "Sending to the cloud", "Almost there", "Just a moment"]);
+
+  let blobUrl;
+  try {
+    const { upload } = await import("https://esm.sh/@vercel/blob@0.27.0/client");
+    const token = await clerk.session.getToken();
+    const result = await upload(currentFile.name, currentFile, {
+      access: "public",
+      handleUploadUrl: "/api/upload-token",
+      clientPayload: token, // we don't actually use this server-side but it's required
+      // Use the Bearer token via the fetch override below.
+      onUploadProgress: (e) => {
+        // e: { loaded, total, percentage }
+        if (e.total) {
+          const pct = (e.loaded / e.total) * 100;
+          progressIndeterminate = false;
+          targetProgress = pct * 0.4; // upload = first 40% of progress feel
+          progressDetail.textContent =
+            `${formatBytes(e.loaded)} of ${formatBytes(e.total)}`;
+        }
+      },
+    });
+    blobUrl = result.url;
+  } catch (e) {
+    log("Upload error: " + (e.message || e), "error");
+    setStatus("Upload failed");
+    logDetails.open = true;
+    stopLoadingPhrases();
+    finishRun();
+    return;
+  }
+
+  log("Uploaded to cloud, transcribing…");
+  setStatus("Transcribing in the cloud…");
+  setProgress(-1, "Transcribing in the cloud", "Whisper Large v3 Turbo · ~100× realtime", "");
+  startLoadingPhrases(["Decoding the voice", "Listening carefully", "Getting the exact wording", "Almost there"]);
+
+  let data;
+  try {
+    const token = await clerk.session.getToken();
+    const r = await fetch("/api/transcribe-cloud", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        blobUrl,
+        language: langSel.value || null,
+        task: translateToggle.checked ? "translate" : "transcribe",
+      }),
+    });
+    if (r.status === 402) {
+      const d = await r.json().catch(() => ({}));
+      openPaywall(`You've used your free cloud minutes for the month (${Math.round((d.limit||1800)/60)} min/mo). Upgrade for unlimited.`);
+      stopLoadingPhrases();
+      setStatus("Free limit reached");
+      finishRun();
+      return;
+    }
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(`HTTP ${r.status}: ${t.slice(0, 200)}`);
+    }
+    data = await r.json();
+  } catch (e) {
+    log("Transcription error: " + (e.message || e), "error");
+    setStatus("Failed");
+    logDetails.open = true;
+    stopLoadingPhrases();
+    finishRun();
+    return;
+  }
+
+  // Refresh waveform peaks from the file so the player has them.
+  try {
+    await decodeAudio(currentFile);
+  } catch (_) { /* non-fatal, just no waveform */ }
+
+  lastResult = {
+    text: data.text || "",
+    chunks: data.chunks || [],
+    sourceName: currentFile.name,
+    duration: data.duration || (lastWaveformPeaks ? null : 0),
+    model: "Cloud · Whisper Large v3 Turbo",
+  };
+  totalAudioSeconds = lastResult.duration || 0;
+
+  stopLoadingPhrases();
+  setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
+              data.pro ? "Pro · unlimited" :
+              `${Math.round(data.usage?.used/60)}/${Math.round(data.usage?.limit/60)} min used this month`);
+  progressFill.classList.add("done");
+  progressPct.classList.add("done");
+  renderTranscript(lastResult);
+  showSuccessToast("Transcription complete");
+  notifyDoneInBackground(`${currentFile?.name || "your file"} is ready`);
+  setStatus("Done");
+  // Update usage in our local state
+  if (data.usage) {
+    userState.used = data.usage.used;
+  }
+  if (data.pro != null) userState.pro = !!data.pro;
+  upgradeCta.hidden = userState.pro;
+  finishRun();
+}
 
 // Boot
 initClerk();

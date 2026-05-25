@@ -30,13 +30,22 @@ Until they're set, the app runs exactly like before (no Pro UI shown).
      - `customer.subscription.deleted`
    - After creating, click the endpoint → copy the **Signing secret** (starts `whsec_…`).
 
-## 3. Groq (AI summary)
+## 3. Groq (AI summary + cloud transcription)
 
 1. https://console.groq.com → Sign up (free).
 2. **API Keys → Create API Key** → copy (starts `gsk_…`).
-3. Free tier covers ~14k tokens/min on Llama 3.3 70B — more than enough for summaries.
+3. Free tier covers ~14k tokens/min on Llama 3.3 70B + Whisper Large v3 Turbo (~$0.04/hour of audio in paid mode, way more on free).
 
-## 4. Vercel — add env vars
+## 4. Vercel Blob (audio storage for cloud transcription)
+
+Cloud transcription needs a place to stash users' uploads briefly. Vercel Blob handles this directly inside your project:
+
+1. Vercel dashboard → your project → **Storage** tab.
+2. **Connect Store → Blob**. Pick a region close to you.
+3. After it's connected, Vercel automatically injects the `BLOB_READ_WRITE_TOKEN` env var into your project. Nothing to copy/paste.
+4. Free tier: 1 GB total storage + 1 GB/mo bandwidth. (Audio files are deleted immediately after transcription, so storage rarely exceeds a few MB.)
+
+## 5. Vercel — add env vars
 
 In Vercel: **Project → Settings → Environment Variables**. Add:
 
@@ -50,16 +59,18 @@ In Vercel: **Project → Settings → Environment Variables**. Add:
 | `GROQ_API_KEY` | `gsk_…` (from step 3) |
 | `APP_URL` | `https://transcriber-jtorres434s-projects.vercel.app` |
 
+`BLOB_READ_WRITE_TOKEN` is added automatically when you connected Blob in step 4 — you don't add this one manually.
+
 After adding, **redeploy** (Deployments → ⋮ on latest → Redeploy).
 
-## 5. Test the flow
+## 6. Test the flow
 
 1. Open your site. Top-right should show **Sign in**.
 2. Sign in (creates a free account).
-3. Drop a file → Transcribe → click **AI Summary**. First two summaries each month are free.
-4. After the second free, the paywall opens → **Upgrade to Pro** → Stripe Checkout.
-5. Use Stripe's test card `4242 4242 4242 4242` with any future expiry + any CVC.
-6. After payment, you return to the app and see the **Welcome to Pro** modal. AI Summary is now unlimited.
+3. Mode selector should default to **Cloud**. Drop a file → Transcribe.
+4. First 30 minutes/month of cloud audio are free. After that the paywall opens.
+5. Click **Upgrade to Pro** → Stripe Checkout. Use the test card `4242 4242 4242 4242` with any future expiry + any CVC.
+6. After payment, you return to the app and see the **Welcome to Pro** modal. Cloud + AI Summary become unlimited.
 
 ## Going live
 

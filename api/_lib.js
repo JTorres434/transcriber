@@ -33,11 +33,39 @@ export async function getUserProState(userId) {
       proSince: meta.proSince || null,
       summaryCount: meta.summaryCount || 0,
       summaryMonth: meta.summaryMonth || null,
+      cloudSeconds: meta.cloudSeconds || 0,
+      cloudMonth: meta.cloudMonth || null,
       email: user.emailAddresses?.[0]?.emailAddress || null,
     };
   } catch (_) {
     return { pro: false };
   }
+}
+
+// Returns how many cloud-transcription seconds the user has used this month
+// (auto-resetting at month boundary).
+export function cloudSecondsThisMonth(state) {
+  const now = new Date();
+  const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  if (state.cloudMonth !== currentMonth) return 0;
+  return state.cloudSeconds || 0;
+}
+
+// Adds N seconds of audio to the user's cloud-usage counter.
+export async function addCloudSeconds(userId, seconds) {
+  const user = await clerk.users.getUser(userId);
+  const meta = user.publicMetadata || {};
+  const now = new Date();
+  const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const baseline = meta.cloudMonth === currentMonth ? (meta.cloudSeconds || 0) : 0;
+  await clerk.users.updateUserMetadata(userId, {
+    publicMetadata: {
+      ...meta,
+      cloudSeconds: baseline + seconds,
+      cloudMonth: currentMonth,
+    },
+  });
+  return baseline + seconds;
 }
 
 // Increment monthly free-tier counter for non-Pro users.

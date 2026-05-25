@@ -77,13 +77,13 @@ export default async function handler(req, res) {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return json(res, 500, { error: "Server not configured" });
 
-  const systemPrompt = `You are a precise transcript summarizer. Given a raw transcript, you produce a JSON object with these exact keys:
-- "summary": 2-3 plain sentence summary of the whole content.
-- "keyPoints": array of 4-6 short bullet strings (the most important points, no fluff).
-- "actionItems": array of action items found in the transcript (empty array if none).
-- "chapters": array of { "title": string, "timestamp": number_in_seconds } for major topic shifts. If the transcript is short (under ~3 minutes) return an empty array.
+  const systemPrompt = `You are a precise transcript summarizer. Return a JSON object with these exact keys, and NO other text:
+- "summary": 2-3 sentences. Max 80 words total.
+- "keyPoints": array of 4-6 short bullets. Each bullet under 15 words.
+- "actionItems": array of action items (empty array if none). Each under 15 words.
+- "chapters": array of { "title": string (under 8 words), "timestamp": number_in_seconds }. Empty array if transcript is short (<3 min).
 
-Output ONLY the JSON object, nothing else. Do not include markdown code fences.`;
+CRITICAL: Output ONLY the JSON object. No markdown fences. No commentary. Keep all strings concise so the entire JSON fits comfortably.`;
 
   const userPrompt = `Duration: ${body.durationSec || "unknown"} seconds.\n\nTranscript:\n${transcript}`;
 
@@ -104,7 +104,7 @@ Output ONLY the JSON object, nothing else. Do not include markdown code fences.`
         // Don't use response_format:json_object — it fails on some inputs
         // ("Failed to generate JSON"). We extract JSON from text below.
         temperature: 0.3,
-        max_tokens: 1500,
+        max_tokens: 3000,
       }),
     });
   } catch (e) {

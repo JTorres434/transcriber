@@ -1,7 +1,7 @@
 // POST /api/transcribe-cloud
 // Body: { blobUrl: string, language?: string, task?: "transcribe"|"translate" }
 // Auth: Bearer <clerk_session_jwt>
-// Free tier: 30 minutes of audio per month
+// Free tier: 10 minutes of audio per month
 // Pro: unlimited
 import { del } from "@vercel/blob";
 import {
@@ -13,7 +13,7 @@ import {
   readJsonBody,
 } from "./_lib.js";
 
-const FREE_TIER_SECONDS = 30 * 60; // 30 minutes
+const FREE_TIER_SECONDS = 10 * 60; // 10 minutes
 const GROQ_MODEL = "whisper-large-v3-turbo";
 
 export const config = {
@@ -43,6 +43,22 @@ export default async function handler(req, res) {
       error: "Free cloud minutes exhausted",
       used: usedSeconds,
       limit: FREE_TIER_SECONDS,
+      upgradeRequired: true,
+    });
+  }
+
+  // Honest-client duration pre-check: if the client tells us how long the
+  // file is and it would push them over, reject before burning a Groq call.
+  // (A lying client still gets caught by the post-charge below; their
+  // *next* request will be blocked by the check above.)
+  const claimedDuration = Number(body.durationSec) || 0;
+  if (!state.pro && claimedDuration > 0 && usedSeconds + claimedDuration > FREE_TIER_SECONDS) {
+    await safeDelete(blobUrl);
+    return json(res, 402, {
+      error: "File would exceed free tier",
+      used: usedSeconds,
+      limit: FREE_TIER_SECONDS,
+      requested: claimedDuration,
       upgradeRequired: true,
     });
   }

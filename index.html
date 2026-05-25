@@ -2102,6 +2102,25 @@ fileRemove.addEventListener("click", (e) => {
   });
 });
 
+// Cheap duration probe — uses <video> metadata, works for audio + video
+// without decoding the file. Resolves to null if the browser can't read it.
+function probeDuration(file) {
+  return new Promise((resolve) => {
+    const el = document.createElement("video");
+    el.preload = "metadata";
+    el.muted = true;
+    const url = URL.createObjectURL(file);
+    const cleanup = () => { URL.revokeObjectURL(url); };
+    el.onloadedmetadata = () => {
+      const d = el.duration;
+      cleanup();
+      resolve(Number.isFinite(d) && d > 0 ? d : null);
+    };
+    el.onerror = () => { cleanup(); resolve(null); };
+    el.src = url;
+  });
+}
+
 // ---- Audio decode (main thread; quick) ----
 let lastWaveformPeaks = null;
 async function decodeAudio(file) {
@@ -3001,7 +3020,7 @@ const welcomeDone = $("welcomeDone");
 let clerk = null;
 let clerkReady = false;
 let proConfigOk = false;
-let userState = { pro: false, used: 0, limit: 2 };
+let userState = { pro: false, used: 0, limit: 2, cloudUsed: 0, cloudLimit: 600 };
 
 function disableCloudOption(reason) {
   const cloudBtn = document.querySelector('.seg-btn[data-quality="cloud"]');
@@ -3101,7 +3120,7 @@ function updateAuthUI() {
 
 async function refreshUserState() {
   if (!clerkReady || !clerk.user) {
-    userState = { pro: false, used: 0, limit: 2 };
+    userState = { pro: false, used: 0, limit: 2, cloudUsed: 0, cloudLimit: 600 };
     upgradeCta.hidden = true;
     return;
   }
@@ -3117,6 +3136,8 @@ async function refreshUserState() {
         used: data.summaryCount || 0,
         limit: 2,
         month: data.summaryMonth || null,
+        cloudUsed: data.cloudSecondsUsed || 0,
+        cloudLimit: data.cloudFreeSeconds || 600,
       };
       upgradeCta.hidden = userState.pro;
     }
@@ -3357,6 +3378,28 @@ async function runCloudTranscription() {
     return;
   }
 
+  // Pre-flight quota check: probe duration before uploading so a 2-hour
+  // file from a free user doesn't waste bandwidth + a Groq call only to
+  // get partially-counted. Server still enforces; this is the UX layer.
+  setStatus("Checking file…");
+  const probedDuration = await probeDuration(currentFile);
+  if (!userState.pro && probedDuration != null) {
+    const remaining = Math.max(0, (userState.cloudLimit || 600) - (userState.cloudUsed || 0));
+    if (probedDuration > remaining) {
+      const limitMin = Math.round((userState.cloudLimit || 600) / 60);
+      const fileMin = Math.ceil(probedDuration / 60);
+      const usedMin = Math.round((userState.cloudUsed || 0) / 60);
+      const reason = remaining <= 0
+        ? `You've used your free cloud minutes for the month (${limitMin} min/mo). Upgrade for unlimited.`
+        : `This file is ${fileMin} min — you have ${Math.round(remaining/60)} min left this month (${usedMin}/${limitMin}). Upgrade for unlimited.`;
+      openPaywall(reason);
+      stopLoadingPhrases();
+      setStatus("Free limit reached");
+      finishRun();
+      return;
+    }
+  }
+
   setStatus("Uploading audio…");
   setProgress(-1, "Uploading audio", currentFile.name, "");
   startLoadingPhrases(["Uploading", "Sending to the cloud", "Almost there", "Just a moment"]);
@@ -3410,11 +3453,12 @@ async function runCloudTranscription() {
         filename: currentFile?.name || null,
         language: langSel.value || null,
         task: translateToggle.checked ? "translate" : "transcribe",
+        durationSec: probedDuration || null,
       }),
     });
     if (r.status === 402) {
       const d = await r.json().catch(() => ({}));
-      openPaywall(`You've used your free cloud minutes for the month (${Math.round((d.limit||1800)/60)} min/mo). Upgrade for unlimited.`);
+      openPaywall(`You've used your free cloud minutes for the month (${Math.round((d.limit||600)/60)} min/mo). Upgrade for unlimited.`);
       stopLoadingPhrases();
       setStatus("Free limit reached");
       finishRun();
@@ -3461,6 +3505,8 @@ async function runCloudTranscription() {
   // Update usage in our local state
   if (data.usage) {
     userState.used = data.usage.used;
+    userState.cloudUsed = data.usage.used;
+    if (data.usage.limit) userState.cloudLimit = data.usage.limit;
   }
   if (data.pro != null) userState.pro = !!data.pro;
   upgradeCta.hidden = userState.pro;

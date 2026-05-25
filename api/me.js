@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     summaryCount: state.summaryCount,
     summaryMonth: state.summaryMonth,
     cloudSecondsUsed: cloudSecondsThisMonth(state),
-    cloudFreeSeconds: 30 * 60,
+    cloudFreeSeconds: 10 * 60,
     summaryFreeLimit: 2,
     email: state.email,
   });

@@ -68,7 +68,7 @@ After adding, **redeploy** (Deployments → ⋮ on latest → Redeploy).
 1. Open your site. Top-right should show **Sign in**.
 2. Sign in (creates a free account).
 3. Mode selector should default to **Cloud**. Drop a file → Transcribe.
-4. First 30 minutes/month of cloud audio are free. After that the paywall opens.
+4. First 10 minutes/month of cloud audio are free. After that the paywall opens.
 5. Click **Upgrade to Pro** → Stripe Checkout. Use the test card `4242 4242 4242 4242` with any future expiry + any CVC.
 6. After payment, you return to the app and see the **Welcome to Pro** modal. Cloud + AI Summary become unlimited.
 

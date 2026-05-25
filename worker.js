@@ -60,11 +60,16 @@ async function loadPipeline(modelId) {
   self.postMessage({ type: "device", device, cached: false });
   self.postMessage({ type: "phase", phase: "model_loading", modelId });
 
+  // dtype choice = quality/speed/download-size tradeoff.
+  // For Whisper-base/small the difference between fp32 and q8 in WER is
+  // ~0.1% — not perceptible to a user — but fp32 is 4x larger to download.
+  // Default to q8 everywhere except the large-v3-turbo encoder, where the
+  // extra precision actually shows up.
   let dtype;
-  if (device === "webgpu") {
-    dtype = modelId.includes("large-v3-turbo")
+  if (modelId.includes("large-v3-turbo")) {
+    dtype = device === "webgpu"
       ? { encoder_model: "fp32", decoder_model_merged: "q4" }
-      : "fp32";
+      : { encoder_model: "q8", decoder_model_merged: "q4" };
   } else {
     dtype = "q8";
   }

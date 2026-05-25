@@ -50,6 +50,7 @@ async function detectDevice() {
 }
 
 async function loadPipeline(modelId) {
+  if (!modelId) throw new Error("No model selected (use Local Fast / Local Best)");
   const { pipeline } = await getLib();
   const device = await detectDevice();
   const cacheKey = modelId + "::" + device;

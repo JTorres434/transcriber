@@ -2026,10 +2026,13 @@ function setFile(f) {
   startBtn.disabled = false;
   setStatus("Ready to transcribe");
   transcriptCard.classList.remove("visible");
-  // Pre-load the model in the background so first-click is fast.
-  const w = ensureWorker();
-  if (w) {
-    try { w.postMessage({ type: "preload", modelId: pickModel() }); } catch (_) {}
+  // Pre-load the local model in the background (skip for Cloud mode).
+  const mid = pickModel();
+  if (mid) {
+    const w = ensureWorker();
+    if (w) {
+      try { w.postMessage({ type: "preload", modelId: mid }); } catch (_) {}
+    }
   }
 }
 function clearFile() {
@@ -2066,12 +2069,15 @@ fileRemove.addEventListener("click", (e) => {
 });
 
 // If user changes quality or language, pre-load that model in background.
+// Skip preload for Cloud mode — no local model needed.
 [qualitySel, langSel].forEach((el) => {
   el.addEventListener("change", () => {
     if (!currentFile || isRunning) return;
+    const mid = pickModel();
+    if (!mid) return;
     const w = ensureWorker();
     if (w) {
-      try { w.postMessage({ type: "preload", modelId: pickModel() }); } catch (_) {}
+      try { w.postMessage({ type: "preload", modelId: mid }); } catch (_) {}
     }
   });
 });

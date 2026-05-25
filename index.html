@@ -1413,6 +1413,7 @@ function onWorkerMessage(e) {
         total: d.total || 0,
       };
       lastDownloadAt = Date.now();
+      if (!isRunning) return; // preload is silent — only pill updates
       let loaded = 0, total = 0;
       for (const f of Object.values(downloadFiles)) {
         loaded += f.loaded || 0;
@@ -1420,9 +1421,7 @@ function onWorkerMessage(e) {
       }
       const pct = total ? (loaded / total) * 100 : -1;
       const speed = computeDlSpeed(loaded);
-      const speedStr = speed > 1024
-        ? `${formatBytes(speed)}/s`
-        : "";
+      const speedStr = speed > 1024 ? `${formatBytes(speed)}/s` : "";
       const detail = total
         ? `${formatBytes(loaded)} of ${formatBytes(total)}` + (speedStr ? ` · ${speedStr}` : "")
         : `${Object.keys(downloadFiles).length} files`;
@@ -1438,6 +1437,7 @@ function onWorkerMessage(e) {
       log("Fetching " + d.file);
       downloadFiles[d.file] = { progress: 0, loaded: 0, total: 0 };
       lastDownloadAt = Date.now();
+      if (!isRunning) return; // preload is silent
       if (!loadingPhraseInterval) startLoadingPhrases(DOWNLOAD_PHRASES);
       setProgress(-1, "Connecting", "Reaching the model server", "");
       startStallWatcher();
@@ -1464,10 +1464,10 @@ function onWorkerMessage(e) {
     if (phaseLabels[msg.phase]) {
       setDeviceLabel(phaseLabels[msg.phase], isLoading ? "loading" : "");
     }
-    // Drive an indeterminate progress bar through every loading phase so the
-    // flowing gradient is the visible "we're working" signal until real %
-    // data arrives. Friendly rotating phrases instead of a stopwatch.
-    if (!isRunning && isLoading) {
+    // Only show the big progress UI when the user has actually clicked
+    // Transcribe. During silent preload (file dropped, but not started),
+    // only the subtle pill in the top-right updates.
+    if (isRunning && isLoading) {
       const phaseDetail = {
         lib_loading: "Starting the speech engine",
         detect_device: "Picking the fastest path",

@@ -1055,7 +1055,7 @@
   .toast {
     position: fixed; bottom: 28px; left: 50%;
     transform: translateX(-50%) translateY(20px);
-    background: var(--ink); color: white;
+    background: var(--ink); color: var(--surface);
     padding: 12px 20px; border-radius: 999px;
     font-size: 13.5px; font-weight: 500;
     display: inline-flex; align-items: center; gap: 9px;
@@ -1153,7 +1153,7 @@
 <div class="container">
   <header>
     <a href="/" class="brand-link" aria-label="Torro Labs Transcriber home">
-      <img src="/torro-labs-logo.png?v=2" alt="Torro Labs" class="brand-logo" />
+      <img src="/torro-labs-logo.png?v=2" alt="Torro Labs" draggable="false" class="brand-logo" />
       <span class="brand">Torro Labs Transcriber</span>
     </a>
     <span class="pill" id="devicePill">
@@ -1398,7 +1398,7 @@
       <button class="modal-close" id="paywallClose" aria-label="Close">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
-      <div class="modal-logo"><img src="/torro-labs-logo.png?v=2" alt="Torro Labs" /></div>
+      <div class="modal-logo"><img src="/torro-labs-logo.png?v=2" alt="Torro Labs" draggable="false" /></div>
       <h2>Unlock Pro</h2>
       <p class="lede" id="paywallSubtitle">Get smarter transcripts with everything below.</p>
       <ul class="pro-features">
@@ -1421,7 +1421,7 @@
       <button class="modal-close" id="welcomeClose" aria-label="Close">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
-      <div class="modal-logo"><img src="/torro-labs-logo.png?v=2" alt="Torro Labs" /></div>
+      <div class="modal-logo"><img src="/torro-labs-logo.png?v=2" alt="Torro Labs" draggable="false" /></div>
       <h2>Welcome to Pro</h2>
       <p class="lede">Your subscription is active. Run unlimited AI Summaries and unlock everything Torro Labs has to offer.</p>
       <button class="btn" id="welcomeDone">Let's go</button>
@@ -1432,7 +1432,7 @@
 <div class="drag-overlay" id="dragOverlay" aria-hidden="true">
   <div class="drag-overlay-inner">
     <div class="drag-overlay-icon">
-      <img src="/torro-labs-logo.png?v=2" alt="Torro Labs" />
+      <img src="/torro-labs-logo.png?v=2" alt="Torro Labs" draggable="false" />
     </div>
     <div class="drag-overlay-title">Drop to transcribe</div>
     <div class="drag-overlay-hint">Audio or video, any size</div>
@@ -2018,7 +2018,27 @@ function formatDuration(seconds) {
 }
 
 // ---- File handling ----
+function isLikelyAudioVideo(file) {
+  if (!file) return false;
+  if (file.type && (file.type.startsWith("audio/") || file.type.startsWith("video/"))) return true;
+  const okExt = /\.(mp3|mp4|m4a|wav|mov|mkv|webm|flac|ogg|avi|m4v|aac|opus|mpga|mpeg)$/i;
+  return okExt.test(file.name || "");
+}
+
 function setFile(f) {
+  if (!isLikelyAudioVideo(f)) {
+    showToast(`"${f.name}" isn't an audio or video file`);
+    return;
+  }
+  // Pause + clear any audio still playing from a previous transcription
+  if (audioEl) { try { audioEl.pause(); } catch (_) {} }
+  if (audioObjectUrl) {
+    try { URL.revokeObjectURL(audioObjectUrl); } catch (_) {}
+    audioObjectUrl = null;
+    if (audioEl) audioEl.removeAttribute("src");
+  }
+  player.hidden = true;
+  aiSummaryCard.hidden = true;
   currentFile = f;
   fileName.textContent = f.name;
   fileMeta.textContent = formatBytes(f.size);

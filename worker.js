@@ -138,7 +138,7 @@ self.onmessage = async (e) => {
         stride_length_s: 5,
         return_timestamps: true,
         language: msg.lang || null,
-        task: "transcribe",
+        task: msg.task || "transcribe",
         no_repeat_ngram_size: 3,
         force_full_sequences: false,
         callback_function,

@@ -276,6 +276,39 @@
     font-weight: 600;
   }
 
+  /* iOS-style mini toggle for translate-to-English */
+  .task-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--ink-soft);
+    font-size: 13.5px; font-weight: 500;
+    padding: 6px 4px;
+  }
+  .task-toggle input { display: none; }
+  .task-toggle-track {
+    position: relative; display: inline-block;
+    width: 36px; height: 20px;
+    background: var(--line-strong); border-radius: 999px;
+    transition: background .18s var(--ease);
+    flex-shrink: 0;
+  }
+  .task-toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    background: white; border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: transform .18s var(--ease);
+  }
+  .task-toggle input:checked + .task-toggle-track { background: var(--accent); }
+  .task-toggle input:checked + .task-toggle-track .task-toggle-thumb {
+    transform: translateX(16px);
+  }
+  .task-toggle:hover .task-toggle-track { background: var(--line); }
+  .task-toggle input:checked ~ .task-toggle-label { color: var(--ink); font-weight: 600; }
+
   .lang-wrap { position: relative; flex: 1; min-width: 160px; }
   .lang-wrap::after {
     content: ""; position: absolute; right: 14px; top: 50%;
@@ -580,6 +613,58 @@
   .footer a { color: var(--ink-soft); text-decoration: none; }
   .footer a:hover { color: var(--accent); }
 
+  /* ===== Drag-anywhere overlay ===== */
+  .drag-overlay {
+    position: fixed; inset: 0;
+    background: rgba(248, 246, 241, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s var(--ease);
+  }
+  .drag-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .drag-overlay-inner {
+    background: white;
+    border: 3px dashed var(--accent);
+    border-radius: 24px;
+    padding: 56px 72px;
+    text-align: center;
+    box-shadow: 0 32px 80px rgba(20, 22, 30, 0.18);
+    transform: scale(0.95);
+    transition: transform .25s var(--ease);
+  }
+  .drag-overlay.visible .drag-overlay-inner { transform: scale(1); }
+  .drag-overlay-icon {
+    width: 80px; height: 80px;
+    margin: 0 auto 18px;
+    border-radius: 20px;
+    background: var(--accent-tint);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .drag-overlay-title {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 28px; font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin-bottom: 6px;
+  }
+  .drag-overlay-hint {
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+  @media (max-width: 540px) {
+    .drag-overlay-inner { padding: 36px 32px; }
+    .drag-overlay-title { font-size: 22px; }
+    .drag-overlay-icon { width: 64px; height: 64px; }
+  }
+
   /* ===== Toast ===== */
   .toast {
     position: fixed; bottom: 28px; left: 50%;
@@ -763,6 +848,11 @@
           <option value="tagalog">Tagalog</option>
         </select>
       </div>
+      <label class="task-toggle" title="Output English text from any-language audio">
+        <input type="checkbox" id="translateToggle" />
+        <span class="task-toggle-track"><span class="task-toggle-thumb"></span></span>
+        <span class="task-toggle-label">Translate to English</span>
+      </label>
     </div>
 
     <!-- Hidden select kept for backwards-compatible JS that reads #quality.value -->
@@ -821,6 +911,7 @@
           Copy
         </button>
         <button class="btn ghost small" id="downloadTxt">.txt</button>
+        <button class="btn ghost small" id="downloadVtt">.vtt</button>
         <button class="btn small" id="downloadSrt">.srt</button>
       </div>
     </div>
@@ -850,6 +941,20 @@
 </div>
 
 <div class="toast" id="toast">Copied to clipboard</div>
+
+<div class="drag-overlay" id="dragOverlay" aria-hidden="true">
+  <div class="drag-overlay-inner">
+    <div class="drag-overlay-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="17 8 12 3 7 8"></polyline>
+        <line x1="12" y1="3" x2="12" y2="15"></line>
+      </svg>
+    </div>
+    <div class="drag-overlay-title">Drop to transcribe</div>
+    <div class="drag-overlay-hint">Audio or video, any size</div>
+  </div>
+</div>
 
 <script>
 // Segmented quality control — keeps the hidden <select id="quality"> in sync.
@@ -911,6 +1016,9 @@ const playerFill = $("playerFill");
 const playerCur = $("playerCur");
 const playerDur = $("playerDur");
 const copyBtn = $("copyBtn");
+const translateToggle = $("translateToggle");
+const dragOverlay = $("dragOverlay");
+const downloadVtt = $("downloadVtt");
 const downloadTxt = $("downloadTxt");
 const downloadSrt = $("downloadSrt");
 const toast = $("toast");
@@ -1680,6 +1788,7 @@ function onWorkerMessage(e) {
     transcriptCard.classList.add("just-done");
     setTimeout(() => transcriptCard.classList.remove("just-done"), 1200);
     showSuccessToast(`Transcription complete · ${formatDuration(elapsed)}`);
+    notifyDoneInBackground(`${currentFile?.name || "your file"} is ready`);
     setStatus("Done");
     finishRun();
     return;
@@ -1716,6 +1825,9 @@ async function transcribe() {
   transcriptCard.classList.remove("visible");
   if (audioEl) audioEl.pause();
   player.hidden = true;
+  // Quietly ask for notification permission on first start, so we can
+  // ping the user if they tab away during a long transcription.
+  maybeRequestNotificationPermission();
   logEl.innerHTML = "";
   logDetails.style.display = "none";
   logDetails.open = false;
@@ -1738,6 +1850,7 @@ async function transcribe() {
       audio,
       modelId: pickModel(),
       lang: langSel.value || null,
+      task: translateToggle.checked ? "translate" : "transcribe",
     }, [buf]);
   } catch (e) {
     log("Error decoding audio: " + (e.message || String(e)), "error");
@@ -1911,6 +2024,29 @@ function buildSrt(result) {
     );
   }).join("\n");
 }
+function formatVttTime(seconds) {
+  // WebVTT uses "." for milliseconds separator instead of ","
+  if (!isFinite(seconds) || seconds < 0) seconds = 0;
+  const ms = Math.floor((seconds % 1) * 1000);
+  const s = Math.floor(seconds) % 60;
+  const m = Math.floor(seconds / 60) % 60;
+  const h = Math.floor(seconds / 3600);
+  return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0") + ":" +
+         String(s).padStart(2,"0") + "." + String(ms).padStart(3,"0");
+}
+function buildVtt(result) {
+  if (!result.chunks || !result.chunks.length) {
+    return "WEBVTT\n\n00:00:00.000 --> 00:00:00.000\n" + (result.text || "") + "\n";
+  }
+  return "WEBVTT\n\n" + result.chunks.map((c) => {
+    const start = c.timestamp?.[0] ?? 0;
+    const end = c.timestamp?.[1] ?? start + 2;
+    return (
+      formatVttTime(start) + " --> " + formatVttTime(end) + "\n" +
+      (c.text || "").trim() + "\n"
+    );
+  }).join("\n");
+}
 function download(filename, text) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1935,6 +2071,61 @@ downloadSrt.addEventListener("click", () => {
   const base = lastResult.sourceName.replace(/\.[^.]+$/, "");
   download(base + ".srt", buildSrt(lastResult));
 });
+downloadVtt.addEventListener("click", () => {
+  if (!lastResult) return;
+  const base = lastResult.sourceName.replace(/\.[^.]+$/, "");
+  download(base + ".vtt", buildVtt(lastResult));
+});
+
+// ---- Drag-anywhere overlay ----
+let dragDepth = 0;
+function showDragOverlay() { dragOverlay.classList.add("visible"); }
+function hideDragOverlay() {
+  dragDepth = 0;
+  dragOverlay.classList.remove("visible");
+}
+window.addEventListener("dragenter", (e) => {
+  if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+  e.preventDefault();
+  dragDepth++;
+  showDragOverlay();
+});
+window.addEventListener("dragover", (e) => {
+  if (e.dataTransfer && e.dataTransfer.types.includes("Files")) e.preventDefault();
+});
+window.addEventListener("dragleave", (e) => {
+  // Only count leaves that actually exit the window
+  if (e.relatedTarget === null) dragDepth--;
+  if (dragDepth <= 0) hideDragOverlay();
+});
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  hideDragOverlay();
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  const f = e.dataTransfer.files[0];
+  setFile(f);
+});
+
+// ---- Browser notification on done ----
+async function maybeRequestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    try { await Notification.requestPermission(); } catch (_) {}
+  }
+}
+function notifyDoneInBackground(msg) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  if (document.visibilityState === "visible") return; // user is looking — toast is enough
+  try {
+    const n = new Notification("Transcription complete", {
+      body: msg,
+      icon: "/favicon.svg",
+      tag: "torro-transcription",
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (_) {}
+}
 
 // Warm up worker (detects WebGPU early so the badge updates)
 ensureWorker();

@@ -1457,30 +1457,28 @@ const fileRemove = $("fileRemove");
 const qualitySel = $("quality");
 const langSel = $("lang");
 
-// For English we use Distil-Whisper: ~4-6x faster than regular Whisper at
-// equal or slightly better accuracy. For other languages we fall back to
-// multilingual Whisper since Distil is English-only.
+// English-only variants (onnx-community) shave the decoder vocab and are
+// modestly faster than the multilingual versions. Non-English uses the
+// multilingual model.
 const MODEL_MAP = {
   fast: {
-    en:    "Xenova/distil-small.en",                // ~165 MB, English, fast + accurate
+    en:    "onnx-community/whisper-base.en",        // ~150 MB, English-only, slight speed bump
     multi: "Xenova/whisper-base",                   // ~150 MB, multilingual
   },
   accurate: {
-    en:    "Xenova/distil-medium.en",               // ~400 MB, English, near-Large quality
+    en:    "onnx-community/whisper-small.en",       // ~490 MB, English-only
     multi: "Xenova/whisper-small",                  // ~490 MB, multilingual
   },
   best: {
-    en:    "onnx-community/whisper-large-v3-turbo", // ~800 MB
+    en:    "onnx-community/whisper-large-v3-turbo", // ~800 MB, needs WebGPU for usable speed
     multi: "onnx-community/whisper-large-v3-turbo",
   },
 };
 
 function pickModel() {
   const quality = MODEL_MAP[qualitySel.value] || MODEL_MAP.fast;
-  // Empty language value = auto-detect. We optimistically assume English
-  // for the model choice since it's the most common case AND most files in
-  // English will benefit. If a user explicitly picks a non-English
-  // language, we route to the multilingual variant.
+  // Empty language value = auto-detect. Default to English (most common).
+  // Explicit non-English picks route to multilingual model.
   const lang = (langSel.value || "").toLowerCase();
   const isEnglish = lang === "" || lang === "english";
   return quality[isEnglish ? "en" : "multi"];

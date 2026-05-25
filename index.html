@@ -123,18 +123,56 @@
     display: flex; align-items: center; gap: 12px;
     margin-bottom: 44px;
   }
-  .logo {
-    width: 38px; height: 38px; border-radius: 11px;
-    background: linear-gradient(135deg, var(--accent) 0%, #FF8E6E 100%);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(226, 90, 60, 0.28),
-                inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  .brand-link {
+    display: inline-flex; align-items: center; gap: 10px;
+    text-decoration: none; color: inherit;
+    transition: opacity .15s var(--ease);
   }
-  .logo svg { color: white; }
+  .brand-link:hover { opacity: 0.85; }
+  .brand-logo {
+    /* The provided logo has both bull + text; clip-path crops to the
+       bull head + a portion of the "TORRO LABS" wordmark so we get a
+       compact, recognizable header mark. */
+    height: 44px; width: auto; max-width: 230px;
+    object-fit: contain;
+    object-position: center;
+    filter: drop-shadow(0 2px 6px rgba(226, 90, 60, 0.18));
+  }
+  /* In dark mode the logo's white-ish background looks like a block;
+     blend it in by raising contrast a touch. */
+  :root.dark .brand-logo { filter: drop-shadow(0 2px 6px rgba(255, 140, 100, 0.25)); }
   .brand {
     font-family: "Fraunces", Georgia, serif;
-    font-weight: 600; font-size: 19px; letter-spacing: -0.015em;
+    font-weight: 600; font-size: 18px; letter-spacing: -0.015em;
+    color: var(--ink-soft);
   }
+  .header-actions {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .pill { margin-left: 0; }
+  .auth-cta {
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--line); padding: 7px 14px;
+    border-radius: 999px; font: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer;
+    transition: background .15s var(--ease), border-color .15s var(--ease);
+  }
+  .auth-cta:hover { background: var(--bg-tint); border-color: var(--line-strong); }
+  .upgrade-cta {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: linear-gradient(135deg, var(--accent) 0%, #FF8E6E 100%);
+    color: white; border: none;
+    padding: 7px 13px; border-radius: 999px;
+    font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(226, 90, 60, 0.35);
+    transition: transform .1s var(--ease), box-shadow .15s var(--ease);
+  }
+  .upgrade-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(226, 90, 60, 0.45); }
+  .upgrade-cta:active { transform: translateY(0); }
+  .user-button { display: inline-flex; }
+  .user-button:empty { display: none; }
   .pill {
     margin-left: auto;
     display: inline-flex; align-items: center; gap: 7px;
@@ -835,12 +873,13 @@
   }
   .drag-overlay.visible .drag-overlay-inner { transform: scale(1); }
   .drag-overlay-icon {
-    width: 80px; height: 80px;
+    width: 220px; height: auto;
     margin: 0 auto 18px;
-    border-radius: 20px;
-    background: var(--accent-tint);
-    color: var(--accent);
     display: flex; align-items: center; justify-content: center;
+  }
+  .drag-overlay-icon img {
+    width: 100%; height: auto;
+    filter: drop-shadow(0 8px 24px rgba(226, 90, 60, 0.35));
   }
   .drag-overlay-title {
     font-family: "Fraunces", Georgia, serif;
@@ -857,6 +896,151 @@
     .drag-overlay-inner { padding: 36px 32px; }
     .drag-overlay-title { font-size: 22px; }
     .drag-overlay-icon { width: 64px; height: 64px; }
+  }
+
+  /* ===== AI Summary feature ===== */
+  .ai-summary-btn {
+    background: linear-gradient(135deg, var(--accent) 0%, #FF8E6E 100%) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 2px 10px rgba(226, 90, 60, 0.35);
+  }
+  .ai-summary-btn:hover:not(:disabled) {
+    box-shadow: 0 4px 14px rgba(226, 90, 60, 0.45);
+    transform: translateY(-1px);
+  }
+  .ai-summary-btn.loading {
+    pointer-events: none; opacity: 0.7;
+  }
+  .ai-summary {
+    margin: 0 24px 24px;
+    padding: 22px 24px;
+    background: linear-gradient(135deg,
+      color-mix(in srgb, var(--accent-tint) 60%, transparent),
+      var(--surface-2));
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    animation: fadeUp .35s var(--ease);
+  }
+  .ai-summary[hidden] { display: none; }
+  .ai-summary-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 16px; gap: 12px;
+  }
+  .ai-summary-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ai-summary-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent) 0%, #FF8E6E 100%);
+    color: white;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 3px 9px; border-radius: 999px;
+  }
+  #aiSummaryMeta { color: var(--ink-soft); font-size: 12px; }
+  .ai-summary-body { color: var(--ink); font-size: 14.5px; line-height: 1.6; }
+  .ai-summary-section { margin-top: 14px; }
+  .ai-summary-section:first-child { margin-top: 0; }
+  .ai-summary-section h4 {
+    margin: 0 0 6px; font-size: 12px; font-weight: 700;
+    color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .ai-summary-section p { margin: 0; }
+  .ai-summary-section ul { margin: 0; padding-left: 20px; }
+  .ai-summary-section li { margin: 4px 0; }
+  .ai-chapter {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 12px;
+    margin: 4px 6px 0 0; cursor: pointer;
+    font-size: 13px;
+    transition: background .15s var(--ease), border-color .15s var(--ease);
+  }
+  .ai-chapter:hover { background: var(--accent-tint); border-color: var(--accent); }
+  .ai-chapter .ts {
+    color: var(--accent); font-weight: 600;
+    font-family: "SF Mono", ui-monospace, Consolas, monospace; font-size: 11px;
+  }
+  @media (max-width: 540px) {
+    .ai-summary { margin: 0 18px 18px; padding: 18px 18px; }
+  }
+
+  /* ===== Modal (used by paywall + welcome) ===== */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 200;
+    background: color-mix(in srgb, var(--bg) 30%, rgba(0, 0, 0, 0.55));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s var(--ease);
+  }
+  .modal-backdrop.visible {
+    opacity: 1; pointer-events: all;
+  }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    width: min(440px, calc(100% - 32px));
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+    transform: scale(0.94); opacity: 0;
+    transition: transform .25s var(--ease), opacity .25s var(--ease);
+  }
+  .modal-backdrop.visible .modal { transform: scale(1); opacity: 1; }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: transparent; border: none; cursor: pointer;
+    color: var(--muted); width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s var(--ease), color .15s var(--ease);
+  }
+  .modal-close:hover { background: var(--bg-tint); color: var(--ink); }
+  .modal-inner { padding: 32px; position: relative; }
+  .modal-logo {
+    text-align: center; margin-bottom: 16px;
+  }
+  .modal-logo img { width: 180px; height: auto; }
+  .modal h2 {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 26px; font-weight: 600;
+    margin: 0 0 8px; text-align: center;
+    letter-spacing: -0.015em;
+  }
+  .modal .lede {
+    text-align: center; color: var(--ink-soft); font-size: 15px;
+    margin: 0 auto 22px; max-width: 360px;
+  }
+  .pro-features {
+    list-style: none; padding: 0; margin: 0 0 22px;
+  }
+  .pro-features li {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .pro-features li:first-child { border-top: none; }
+  .pro-features .check {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent-tint); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+  }
+  .pro-features .check svg { width: 11px; height: 11px; }
+  .pro-price {
+    text-align: center; margin: 18px 0 14px;
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 36px; font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .pro-price .per { font-size: 14px; color: var(--muted); font-weight: 500; }
+  .modal .btn { width: 100%; padding: 13px 22px; font-size: 15px; }
+  .modal .btn.ghost { margin-top: 8px; }
+  .modal-footnote {
+    text-align: center; color: var(--muted);
+    font-size: 12px; margin-top: 14px;
   }
 
   /* ===== Toast ===== */
@@ -908,9 +1092,11 @@
   }
   @media (max-width: 540px) {
     .container { padding: 28px 14px 56px; }
-    header { margin-bottom: 32px; gap: 10px; }
-    .brand { font-size: 18px; }
+    header { margin-bottom: 32px; gap: 8px; flex-wrap: wrap; }
+    .brand { font-size: 16px; }
+    .brand-logo { height: 36px; max-width: 180px; }
     .pill { padding: 4px 10px; font-size: 11px; }
+    .auth-cta, .upgrade-cta { padding: 6px 11px; font-size: 12px; }
     .hero { margin-bottom: 26px; }
     h1 { font-size: 30px; letter-spacing: -0.02em; }
     .lede { font-size: 15px; max-width: none; }
@@ -958,28 +1144,31 @@
 <body>
 <div class="container">
   <header>
-    <div class="logo">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-        <line x1="12" y1="19" x2="12" y2="23"></line>
-        <line x1="8" y1="23" x2="16" y2="23"></line>
-      </svg>
-    </div>
-    <span class="brand">Torro Labs Transcriber</span>
+    <a href="/" class="brand-link" aria-label="Torro Labs Transcriber home">
+      <img src="/torro-labs-logo.jpg" alt="Torro Labs" class="brand-logo" />
+      <span class="brand">Transcriber</span>
+    </a>
     <span class="pill" id="devicePill">
       <span class="dot"></span>
       <span id="deviceLabel">Starting up</span>
     </span>
-    <button class="theme-toggle" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-      </svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="4"/>
-        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-      </svg>
-    </button>
+    <div class="header-actions">
+      <button class="auth-cta" id="signInBtn" hidden>Sign in</button>
+      <button class="upgrade-cta" id="upgradeCta" hidden>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg>
+        Upgrade
+      </button>
+      <div class="user-button" id="userButton"></div>
+      <button class="theme-toggle" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <section class="hero">
@@ -1118,6 +1307,12 @@
           </svg>
           Find
         </button>
+        <button class="btn ai-summary-btn small" id="aiSummaryBtn" hidden title="Generate AI summary, key points, chapters">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M12 2l2.39 5.4L20 9.5l-4.5 3.9 1.5 5.6L12 16l-5 3 1.5-5.6L4 9.5l5.61-2.1z"/>
+          </svg>
+          AI Summary
+        </button>
         <button class="btn ghost small" id="copyBtn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -1166,6 +1361,18 @@
       <button class="player-speed" id="playerSpeed" title="Playback speed">1×</button>
     </div>
     <div class="transcript-body" id="transcriptBody"></div>
+    <div class="ai-summary" id="aiSummaryCard" hidden>
+      <div class="ai-summary-header">
+        <div class="ai-summary-title">
+          <span class="ai-summary-badge">AI Summary</span>
+          <span id="aiSummaryMeta"></span>
+        </div>
+        <button class="search-btn" id="aiSummaryClose" title="Close summary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="ai-summary-body" id="aiSummaryBody"></div>
+    </div>
   </div>
 
   <div class="footer">
@@ -1175,14 +1382,47 @@
 
 <div class="toast" id="toast">Copied to clipboard</div>
 
+<div class="modal-backdrop" id="paywallModal" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-inner">
+      <button class="modal-close" id="paywallClose" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+      <div class="modal-logo"><img src="/torro-labs-logo.jpg" alt="Torro Labs" /></div>
+      <h2>Unlock Pro</h2>
+      <p class="lede" id="paywallSubtitle">Get smarter transcripts with everything below.</p>
+      <ul class="pro-features">
+        <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Unlimited AI Summary, Key Points & Chapters</li>
+        <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Action item extraction</li>
+        <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>All transcription stays local & private</li>
+        <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Cancel anytime, no questions asked</li>
+      </ul>
+      <div class="pro-price">$9<span class="per"> / month</span></div>
+      <button class="btn" id="paywallSubscribe">Upgrade to Pro</button>
+      <button class="btn ghost" id="paywallMaybeLater">Maybe later</button>
+      <div class="modal-footnote">Secure checkout via Stripe</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="welcomeModal" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-inner">
+      <button class="modal-close" id="welcomeClose" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+      <div class="modal-logo"><img src="/torro-labs-logo.jpg" alt="Torro Labs" /></div>
+      <h2>Welcome to Pro</h2>
+      <p class="lede">Your subscription is active. Run unlimited AI Summaries and unlock everything Torro Labs has to offer.</p>
+      <button class="btn" id="welcomeDone">Let's go</button>
+    </div>
+  </div>
+</div>
+
 <div class="drag-overlay" id="dragOverlay" aria-hidden="true">
   <div class="drag-overlay-inner">
     <div class="drag-overlay-icon">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-        <polyline points="17 8 12 3 7 8"></polyline>
-        <line x1="12" y1="3" x2="12" y2="15"></line>
-      </svg>
+      <img src="/torro-labs-logo.jpg" alt="Torro Labs" />
     </div>
     <div class="drag-overlay-title">Drop to transcribe</div>
     <div class="drag-overlay-hint">Audio or video, any size</div>
@@ -2256,6 +2496,7 @@ function renderTranscript(result) {
   transcriptCard.classList.add("visible");
   setupAudioPlayer(currentFile);
   transcriptCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.dispatchEvent(new CustomEvent("transcript:done"));
 }
 
 // ---- Audio player ----
@@ -2678,6 +2919,335 @@ function notifyDoneInBackground(msg) {
 
 // Warm up worker (detects WebGPU early so the badge updates)
 ensureWorker();
+
+// ---------------------------------------------------------------
+// Pro / Auth / AI Summary
+// ---------------------------------------------------------------
+const signInBtn = $("signInBtn");
+const upgradeCta = $("upgradeCta");
+const userButton = $("userButton");
+const aiSummaryBtn = $("aiSummaryBtn");
+const aiSummaryCard = $("aiSummaryCard");
+const aiSummaryBody = $("aiSummaryBody");
+const aiSummaryMeta = $("aiSummaryMeta");
+const aiSummaryClose = $("aiSummaryClose");
+const paywallModal = $("paywallModal");
+const paywallSubscribe = $("paywallSubscribe");
+const paywallClose = $("paywallClose");
+const paywallMaybeLater = $("paywallMaybeLater");
+const paywallSubtitle = $("paywallSubtitle");
+const welcomeModal = $("welcomeModal");
+const welcomeClose = $("welcomeClose");
+const welcomeDone = $("welcomeDone");
+
+let clerk = null;
+let clerkReady = false;
+let proConfigOk = false;
+let userState = { pro: false, used: 0, limit: 2 };
+
+async function fetchConfig() {
+  try {
+    const r = await fetch("/api/config", { cache: "no-store" });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function initClerk() {
+  const cfg = await fetchConfig();
+  if (!cfg || !cfg.proEnabled || !cfg.clerkPublishableKey) {
+    // Pro features not configured — hide all Pro UI gracefully.
+    signInBtn.hidden = true;
+    upgradeCta.hidden = true;
+    aiSummaryBtn.hidden = true;
+    return;
+  }
+  proConfigOk = true;
+  // Dynamically import Clerk JS via esm.sh (cleanest for vanilla pages).
+  let ClerkCtor;
+  try {
+    const mod = await import("https://esm.sh/@clerk/clerk-js@5");
+    ClerkCtor = mod.Clerk || mod.default;
+  } catch (e) {
+    log("Could not load auth: " + (e.message || e), "error");
+    return;
+  }
+  clerk = new ClerkCtor(cfg.clerkPublishableKey);
+  await clerk.load({ appearance: { variables: { colorPrimary: "#E25A3C" } } });
+  clerkReady = true;
+  updateAuthUI();
+  clerk.addListener(({ user }) => { updateAuthUI(); refreshUserState(); });
+  // If the URL says the user just upgraded, show welcome + force-refresh state
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("upgraded") === "1") {
+    // Webhook may need a moment — re-check a few times
+    for (let i = 0; i < 6; i++) {
+      await refreshUserState();
+      if (userState.pro) break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    if (userState.pro) showWelcome();
+    // Clean the URL
+    history.replaceState({}, "", window.location.pathname);
+  } else if (clerk.user) {
+    refreshUserState();
+  }
+}
+
+function updateAuthUI() {
+  if (!clerkReady) return;
+  if (clerk.user) {
+    signInBtn.hidden = true;
+    userButton.innerHTML = "";
+    clerk.mountUserButton(userButton, { afterSignOutUrl: "/" });
+  } else {
+    signInBtn.hidden = false;
+    userButton.innerHTML = "";
+    upgradeCta.hidden = true;
+  }
+}
+
+async function refreshUserState() {
+  if (!clerkReady || !clerk.user) {
+    userState = { pro: false, used: 0, limit: 2 };
+    upgradeCta.hidden = true;
+    return;
+  }
+  try {
+    const token = await clerk.session.getToken();
+    const r = await fetch("/api/me", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (r.ok) {
+      const data = await r.json();
+      userState = {
+        pro: !!data.pro,
+        used: data.summaryCount || 0,
+        limit: 2,
+        month: data.summaryMonth || null,
+      };
+      upgradeCta.hidden = userState.pro;
+    }
+  } catch (_) {}
+}
+
+signInBtn.addEventListener("click", () => {
+  if (!clerk) return;
+  clerk.openSignIn({
+    afterSignInUrl: window.location.pathname,
+    afterSignUpUrl: window.location.pathname,
+  });
+});
+upgradeCta.addEventListener("click", () => openPaywall("Upgrade to unlock unlimited AI summaries."));
+
+// ---- Paywall modal ----
+function openPaywall(reason) {
+  if (!proConfigOk) return;
+  paywallSubtitle.textContent = reason || "Get smarter transcripts with everything below.";
+  paywallModal.classList.add("visible");
+  paywallModal.setAttribute("aria-hidden", "false");
+}
+function closePaywall() {
+  paywallModal.classList.remove("visible");
+  paywallModal.setAttribute("aria-hidden", "true");
+}
+paywallClose.addEventListener("click", closePaywall);
+paywallMaybeLater.addEventListener("click", closePaywall);
+paywallModal.addEventListener("click", (e) => { if (e.target === paywallModal) closePaywall(); });
+
+paywallSubscribe.addEventListener("click", async () => {
+  if (!clerkReady) return;
+  if (!clerk.user) {
+    closePaywall();
+    clerk.openSignIn({
+      afterSignInUrl: window.location.pathname,
+      afterSignUpUrl: window.location.pathname,
+    });
+    return;
+  }
+  paywallSubscribe.disabled = true;
+  paywallSubscribe.textContent = "Opening checkout…";
+  try {
+    const token = await clerk.session.getToken();
+    const r = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+    });
+    const data = await r.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      throw new Error(data.error || "Checkout failed");
+    }
+  } catch (e) {
+    showToast("Checkout failed: " + (e.message || e));
+  } finally {
+    paywallSubscribe.disabled = false;
+    paywallSubscribe.textContent = "Upgrade to Pro";
+  }
+});
+
+// ---- Welcome modal ----
+function showWelcome() {
+  welcomeModal.classList.add("visible");
+  welcomeModal.setAttribute("aria-hidden", "false");
+}
+function closeWelcome() {
+  welcomeModal.classList.remove("visible");
+  welcomeModal.setAttribute("aria-hidden", "true");
+}
+welcomeClose.addEventListener("click", closeWelcome);
+welcomeDone.addEventListener("click", closeWelcome);
+welcomeModal.addEventListener("click", (e) => { if (e.target === welcomeModal) closeWelcome(); });
+
+// ---- AI Summary feature ----
+function transcriptToText(result) {
+  if (!result) return "";
+  if (result.chunks && result.chunks.length) {
+    return result.chunks.map(c => {
+      const t = (c.text || "").trim();
+      const start = c.timestamp?.[0];
+      return (start != null ? `[${formatShortTime(start)}] ` : "") + t;
+    }).join("\n");
+  }
+  return result.text || "";
+}
+
+aiSummaryClose.addEventListener("click", () => {
+  aiSummaryCard.hidden = true;
+});
+
+aiSummaryBtn.addEventListener("click", async () => {
+  if (!lastResult) return;
+  if (!proConfigOk) {
+    showToast("AI features not configured on this deploy");
+    return;
+  }
+  if (!clerkReady || !clerk.user) {
+    clerk?.openSignIn({
+      afterSignInUrl: window.location.pathname,
+      afterSignUpUrl: window.location.pathname,
+    });
+    return;
+  }
+  aiSummaryBtn.classList.add("loading");
+  const originalLabel = aiSummaryBtn.innerHTML;
+  aiSummaryBtn.innerHTML = "<span>Thinking…</span>";
+  try {
+    const token = await clerk.session.getToken();
+    const r = await fetch("/api/summarize", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        transcript: transcriptToText(lastResult),
+        durationSec: lastResult.duration || null,
+      }),
+    });
+    if (r.status === 402) {
+      const data = await r.json().catch(() => ({}));
+      openPaywall(`You've used your ${data.limit || 2} free summaries this month. Upgrade for unlimited.`);
+      return;
+    }
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(`Summary failed (${r.status}): ${t.slice(0, 120)}`);
+    }
+    const data = await r.json();
+    renderSummary(data);
+    userState.pro = !!data.pro;
+    if (data.usage) {
+      userState.used = data.usage.used;
+      userState.limit = data.usage.limit;
+    }
+    upgradeCta.hidden = userState.pro;
+  } catch (e) {
+    showToast("Couldn't generate summary: " + (e.message || e));
+  } finally {
+    aiSummaryBtn.classList.remove("loading");
+    aiSummaryBtn.innerHTML = originalLabel;
+  }
+});
+
+function renderSummary(data) {
+  aiSummaryBody.innerHTML = "";
+
+  if (!userState.pro && data.usage) {
+    aiSummaryMeta.textContent = `${data.usage.used}/${data.usage.limit} free this month`;
+  } else if (data.pro) {
+    aiSummaryMeta.textContent = "Pro · unlimited";
+  } else {
+    aiSummaryMeta.textContent = "";
+  }
+
+  if (data.summary) {
+    const section = document.createElement("div");
+    section.className = "ai-summary-section";
+    section.innerHTML = `<h4>Summary</h4><p></p>`;
+    section.querySelector("p").textContent = data.summary;
+    aiSummaryBody.appendChild(section);
+  }
+  if (data.keyPoints && data.keyPoints.length) {
+    const section = document.createElement("div");
+    section.className = "ai-summary-section";
+    const list = document.createElement("ul");
+    data.keyPoints.forEach(pt => {
+      const li = document.createElement("li");
+      li.textContent = pt;
+      list.appendChild(li);
+    });
+    section.innerHTML = `<h4>Key Points</h4>`;
+    section.appendChild(list);
+    aiSummaryBody.appendChild(section);
+  }
+  if (data.actionItems && data.actionItems.length) {
+    const section = document.createElement("div");
+    section.className = "ai-summary-section";
+    const list = document.createElement("ul");
+    data.actionItems.forEach(pt => {
+      const li = document.createElement("li");
+      li.textContent = pt;
+      list.appendChild(li);
+    });
+    section.innerHTML = `<h4>Action Items</h4>`;
+    section.appendChild(list);
+    aiSummaryBody.appendChild(section);
+  }
+  if (data.chapters && data.chapters.length) {
+    const section = document.createElement("div");
+    section.className = "ai-summary-section";
+    section.innerHTML = `<h4>Chapters</h4>`;
+    const wrap = document.createElement("div");
+    data.chapters.forEach(ch => {
+      const chip = document.createElement("button");
+      chip.className = "ai-chapter";
+      const ts = document.createElement("span");
+      ts.className = "ts";
+      ts.textContent = formatShortTime(ch.timestamp || 0);
+      const title = document.createTextNode(" " + (ch.title || ""));
+      chip.appendChild(ts);
+      chip.appendChild(title);
+      chip.addEventListener("click", () => seekToSegment(ch.timestamp || 0));
+      wrap.appendChild(chip);
+    });
+    section.appendChild(wrap);
+    aiSummaryBody.appendChild(section);
+  }
+
+  aiSummaryCard.hidden = false;
+  aiSummaryCard.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Listen for transcript-done to reveal the AI Summary button.
+document.addEventListener("transcript:done", () => {
+  aiSummaryBtn.hidden = !proConfigOk;
+  aiSummaryCard.hidden = true;
+});
+
+// Boot
+initClerk();
 </script>
 </body>
 </html>

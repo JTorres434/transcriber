@@ -1,0 +1,10 @@
+{
+  "name": "torro-labs-transcriber",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@clerk/backend": "^1.16.0",
+    "stripe": "^17.0.0"
+  }
+}

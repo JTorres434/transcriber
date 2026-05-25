@@ -73,14 +73,11 @@ export default async function handler(req, res) {
   form.append("model", GROQ_MODEL);
   form.append("response_format", "verbose_json");
   form.append("temperature", "0");
+  // Groq picks the language code from this param. Their translations
+  // endpoint always outputs English regardless of language hint.
   if (body.language) form.append("language", body.language);
-  if (body.task === "translate") {
-    // Groq uses a separate endpoint for translations.
-    // Fall through to the translation flow below.
-  } else {
-    form.append("task", "transcribe");
-  }
 
+  // Transcribe vs translate is determined by the endpoint URL, not a param.
   const endpoint = body.task === "translate"
     ? "https://api.groq.com/openai/v1/audio/translations"
     : "https://api.groq.com/openai/v1/audio/transcriptions";

@@ -12,6 +12,26 @@ import {
 } from "./_lib.js";
 
 const FREE_TIER_LIMIT = 2;
+
+// Pulls the first {…} block out of a possibly-noisy LLM response.
+// Handles cases where the model wraps JSON in markdown fences or adds prose.
+function extractJsonObject(text) {
+  if (!text) return null;
+  // Try direct parse first
+  try { return JSON.parse(text); } catch (_) {}
+  // Strip markdown code fences
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) {
+    try { return JSON.parse(fence[1]); } catch (_) {}
+  }
+  // Find first { and matching final }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+  }
+  return null;
+}
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const MAX_TRANSCRIPT_CHARS = 50000; // ~12-15k tokens, well within Groq context
 
@@ -81,7 +101,8 @@ Output ONLY the JSON object, nothing else. Do not include markdown code fences.`
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        response_format: { type: "json_object" },
+        // Don't use response_format:json_object — it fails on some inputs
+        // ("Failed to generate JSON"). We extract JSON from text below.
         temperature: 0.3,
         max_tokens: 1500,
       }),
@@ -103,10 +124,12 @@ Output ONLY the JSON object, nothing else. Do not include markdown code fences.`
   catch { return json(res, 502, { error: "Bad summary response" }); }
 
   const content = groqJson?.choices?.[0]?.message?.content || "";
-  let parsed;
-  try { parsed = JSON.parse(content); }
-  catch {
-    return json(res, 502, { error: "Summary returned invalid JSON" });
+  const parsed = extractJsonObject(content);
+  if (!parsed) {
+    return json(res, 502, {
+      error: "Summary returned invalid JSON",
+      detail: content.slice(0, 200),
+    });
   }
 
   // Successful summary — increment the free-tier counter only for non-Pro

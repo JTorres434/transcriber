@@ -1155,6 +1155,7 @@ let targetProgress = -1; // -1 means indeterminate
 let displayProgress = 0;
 let progressRaf = null;
 let progressIndeterminate = false;
+let hideProgressPct = false;
 
 function ensureProgressAnimator() {
   if (progressRaf) return;
@@ -1177,7 +1178,10 @@ function ensureProgressAnimator() {
       }
     }
     progressFill.style.width = displayProgress + "%";
-    progressPct.textContent = progressIndeterminate ? "" : Math.round(displayProgress) + "%";
+    // Hide the % during transcription (it's an estimate — a static number is
+    // what makes it feel 'stuck'). Bar fill + shimmer carry the motion.
+    const hidePct = progressIndeterminate || hideProgressPct;
+    progressPct.textContent = hidePct ? "" : Math.round(displayProgress) + "%";
     progressRaf = requestAnimationFrame(tick);
   };
   progressRaf = requestAnimationFrame(tick);
@@ -1216,6 +1220,7 @@ function hideProgress() {
   stopTranscribeEstimator();
   stopProgressAnimator();
   displayProgress = 0; targetProgress = -1; progressIndeterminate = false;
+  hideProgressPct = false;
   progressFill.style.width = "0%";
 }
 
@@ -1243,13 +1248,12 @@ function startTranscribeEstimator(totalSeconds, isWebGpu) {
     const ratio = wall / expected;
     let pct;
     if (ratio < 1) {
-      pct = 5 + 65 * ratio;                          // 5% → 70% over expected duration
+      pct = 5 + 70 * ratio;                                  // 5% → 75% over expected
     } else {
-      const overshoot = ratio - 1;
-      pct = 70 + 18 * (1 - Math.pow(0.55, overshoot)); // 70% → 88% asymptote ceiling
+      pct = 95 - 20 * Math.exp(-(ratio - 1) * 0.8);          // 75% → ~95% asymptotically
     }
     progressIndeterminate = false;
-    targetProgress = Math.min(88, pct);
+    targetProgress = Math.min(95, pct);
     const covered = Math.min(totalSeconds, (targetProgress / 100) * totalSeconds);
     progressDetail.textContent =
       `${formatShortTime(covered)} of ${formatShortTime(totalSeconds)}`;
@@ -1709,6 +1713,7 @@ function onWorkerMessage(e) {
     totalAudioSeconds = msg.totalSeconds;
     tStartTranscribe = performance.now();
     setStatus("Transcribing…");
+    hideProgressPct = true; // estimate-based; don't fixate user on a number
     setProgress(5, "Transcribing",
                 `0:00 of ${formatShortTime(totalAudioSeconds)}`,
                 "Listening carefully…");
@@ -1779,6 +1784,7 @@ function onWorkerMessage(e) {
     stopLoadingPhrases();
     stopTranscribePhrases();
     stopTranscribeEstimator();
+    hideProgressPct = false; // 100% is real, show it
     setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
                 `Took ${formatDuration(elapsed)} (${ratio.toFixed(1)}× realtime)`);
     progressLabel.classList.remove("working-label");

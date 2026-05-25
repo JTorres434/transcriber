@@ -1,0 +1,24 @@
+{
+  "name": "Torro Labs Transcriber",
+  "short_name": "Torro Labs",
+  "description": "Drop any audio or video file, get a clean transcript with timestamps. 100% in your browser.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F1",
+  "theme_color": "#E25A3C",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/torro-labs-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

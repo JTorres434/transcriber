@@ -64,8 +64,12 @@ export default async function handler(req, res) {
   }
   const audioBlob = await audioResp.blob();
 
+  // Groq requires a file extension it recognizes. Derive from blob URL,
+  // then sanity-check against the allowed list.
+  const filename = pickGroqFilename(blobUrl, body.filename);
+
   const form = new FormData();
-  form.append("file", audioBlob, "audio.bin");
+  form.append("file", audioBlob, filename);
   form.append("model", GROQ_MODEL);
   form.append("response_format", "verbose_json");
   form.append("temperature", "0");
@@ -136,4 +140,18 @@ export default async function handler(req, res) {
 
 async function safeDelete(blobUrl) {
   try { await del(blobUrl); } catch (_) {}
+}
+
+const GROQ_VALID_EXTS = ["flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "opus", "wav", "webm"];
+
+function pickGroqFilename(blobUrl, clientFilename) {
+  const candidates = [clientFilename, blobUrl.split("?")[0].split("/").pop()];
+  for (const name of candidates) {
+    if (!name) continue;
+    const ext = (name.split(".").pop() || "").toLowerCase();
+    if (GROQ_VALID_EXTS.includes(ext)) return name;
+  }
+  // Common defaults: mp4 if it looks like a video URL, mp3 otherwise
+  const looksLikeVideo = /\.(mov|avi|mkv|m4v)$/i.test(blobUrl);
+  return looksLikeVideo ? "audio.mp4" : "audio.mp3";
 }

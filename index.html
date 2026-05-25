@@ -3371,6 +3371,7 @@ async function runCloudTranscription() {
       },
       body: JSON.stringify({
         blobUrl,
+        filename: currentFile?.name || null,
         language: langSel.value || null,
         task: translateToggle.checked ? "translate" : "transcribe",
       }),

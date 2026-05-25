@@ -737,9 +737,12 @@
 
     <div class="controls-row surface-divide">
       <div class="seg-control" id="qualityControl" role="tablist" aria-label="Quality">
-        <button type="button" class="seg-btn active" data-quality="fast">Fast</button>
-        <button type="button" class="seg-btn" data-quality="accurate">Accurate</button>
-        <button type="button" class="seg-btn" data-quality="best">Best</button>
+        <button type="button" class="seg-btn active" data-quality="fast"
+                title="Whisper Base · fast and accurate">Accurate</button>
+        <button type="button" class="seg-btn" data-quality="accurate"
+                title="Whisper Small · more accurate but slower">Slower</button>
+        <button type="button" class="seg-btn" data-quality="best"
+                title="Whisper Large v3 Turbo · highest accuracy, slowest (much faster with WebGPU)">Slowest</button>
       </div>
       <div class="lang-wrap">
         <select id="lang" aria-label="Language">

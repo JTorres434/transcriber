@@ -666,7 +666,7 @@
   .player[hidden] { display: none; }
   .player-play {
     width: 38px; height: 38px; border-radius: 50%;
-    background: var(--ink); color: white;
+    background: var(--ink); color: var(--surface);
     border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
@@ -3056,15 +3056,25 @@ async function initClerk() {
   }
 }
 
+let userButtonMounted = false;
 function updateAuthUI() {
   if (!clerkReady) return;
   if (clerk.user) {
     signInBtn.hidden = true;
-    userButton.innerHTML = "";
-    clerk.mountUserButton(userButton, { afterSignOutUrl: "/" });
+    // Only mount the Clerk UserButton once. Re-mounting on every state
+    // change (which addListener fires on) was making the avatar disappear
+    // mid-render.
+    if (!userButtonMounted) {
+      clerk.mountUserButton(userButton, { afterSignOutUrl: "/" });
+      userButtonMounted = true;
+    }
   } else {
     signInBtn.hidden = false;
-    userButton.innerHTML = "";
+    if (userButtonMounted) {
+      try { clerk.unmountUserButton(userButton); } catch (_) {}
+      userButton.innerHTML = "";
+      userButtonMounted = false;
+    }
     upgradeCta.hidden = true;
   }
 }

@@ -3469,8 +3469,8 @@ async function runCloudTranscription() {
       const fileMin = Math.ceil(probedDuration / 60);
       const usedMin = Math.round((userState.cloudUsed || 0) / 60);
       const reason = remaining <= 0
-        ? `You've used your free cloud minutes for the month (${limitMin} min/mo). Upgrade for unlimited.`
-        : `This file is ${fileMin} min — you have ${Math.round(remaining/60)} min left this month (${usedMin}/${limitMin}). Upgrade for unlimited.`;
+        ? `You've used your free cloud minutes for today (${limitMin} min/day). Resets at midnight UTC, or upgrade for unlimited.`
+        : `This file is ${fileMin} min — you have ${Math.round(remaining/60)} min left today (${usedMin}/${limitMin}). Upgrade for unlimited.`;
       openPaywall(reason);
       stopLoadingPhrases();
       setStatus("Free limit reached");
@@ -3556,7 +3556,7 @@ async function runCloudTranscription() {
     });
     if (r.status === 402) {
       const d = await r.json().catch(() => ({}));
-      openPaywall(`You've used your free cloud minutes for the month (${Math.round((d.limit||600)/60)} min/mo). Upgrade for unlimited.`);
+      openPaywall(`You've used your free cloud minutes for today (${Math.round((d.limit||600)/60)} min/day). Resets at midnight UTC, or upgrade for unlimited.`);
       stopLoadingPhrases();
       setStatus("Free limit reached");
       finishRun();
@@ -3603,7 +3603,7 @@ async function runCloudTranscription() {
   stopLoadingPhrases();
   setProgress(100, "Finished", `${formatShortTime(totalAudioSeconds)} transcribed`,
               data.pro ? "Pro · unlimited" :
-              `${Math.round(data.usage?.used/60)}/${Math.round(data.usage?.limit/60)} min used this month`);
+              `${Math.round(data.usage?.used/60)}/${Math.round(data.usage?.limit/60)} min used today`);
   progressFill.classList.add("done");
   progressPct.classList.add("done");
   renderTranscript(lastResult);

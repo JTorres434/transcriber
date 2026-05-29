@@ -2,7 +2,7 @@
 import {
   verifyClerkSession,
   getUserProState,
-  cloudSecondsThisMonth,
+  cloudSecondsToday,
   json,
 } from "./_lib.js";
 
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     proSince: state.proSince,
     summaryCount: state.summaryCount,
     summaryMonth: state.summaryMonth,
-    cloudSecondsUsed: cloudSecondsThisMonth(state),
+    cloudSecondsUsed: cloudSecondsToday(state),
     cloudFreeSeconds: 10 * 60,
     summaryFreeLimit: 2,
     email: state.email,

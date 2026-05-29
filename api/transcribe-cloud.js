@@ -1,19 +1,19 @@
 // POST /api/transcribe-cloud
 // Body: { blobUrl: string, language?: string, task?: "transcribe"|"translate" }
 // Auth: Bearer <clerk_session_jwt>
-// Free tier: 10 minutes of audio per month
+// Free tier: 10 minutes of audio per UTC day
 // Pro: unlimited
 import { del } from "@vercel/blob";
 import {
   verifyClerkSession,
   getUserProState,
-  cloudSecondsThisMonth,
+  cloudSecondsToday,
   addCloudSeconds,
   json,
   readJsonBody,
 } from "./_lib.js";
 
-const FREE_TIER_SECONDS = 10 * 60; // 10 minutes
+const FREE_TIER_SECONDS = 10 * 60; // 10 minutes per day
 const GROQ_MODEL = "whisper-large-v3-turbo";
 
 export const config = {
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   // Pull entitlement state. We do an "optimistic" pre-check so blatantly
   // over-quota users don't even start an upload-to-Groq.
   const state = await getUserProState(userId);
-  const usedSeconds = cloudSecondsThisMonth(state);
+  const usedSeconds = cloudSecondsToday(state);
   if (!state.pro && usedSeconds >= FREE_TIER_SECONDS) {
     await safeDelete(blobUrl);
     return json(res, 402, {

@@ -46,6 +46,26 @@ export async function getUserProState(userId) {
 // Eastern Time auto-handles EST/EDT.
 const QUOTA_TIMEZONE = "America/New_York";
 
+// Hosts that enforce the free-tier cloud quota. Anything else (Vercel preview
+// URLs, localhost, future staging domains) is treated as unlimited so JC can
+// use the app for personal work without burning through the public quota.
+const LIMITED_HOSTS = new Set(["torrolabs.com", "www.torrolabs.com"]);
+
+function getRequestHost(req) {
+  const xfh = req.headers["x-forwarded-host"];
+  const raw = (xfh || req.headers.host || "").toString();
+  return raw.split(",")[0].split(":")[0].trim().toLowerCase();
+}
+
+// Returns true if the request hit a hostname that should enforce the quota.
+// Default to TRUE on missing/unparseable host so we never accidentally hand
+// out unlimited access when something's off.
+export function isLimitedHost(req) {
+  const host = getRequestHost(req);
+  if (!host) return true;
+  return LIMITED_HOSTS.has(host);
+}
+
 function currentDay() {
   // en-CA formats as YYYY-MM-DD natively, so we get a clean ISO-style key
   // anchored to the configured timezone (auto-handles DST).

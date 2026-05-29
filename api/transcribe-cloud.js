@@ -9,6 +9,7 @@ import {
   getUserProState,
   cloudSecondsToday,
   addCloudSeconds,
+  isLimitedHost,
   json,
   readJsonBody,
 } from "./_lib.js";
@@ -33,11 +34,12 @@ export default async function handler(req, res) {
   const blobUrl = body.blobUrl;
   if (!blobUrl) return json(res, 400, { error: "Missing blobUrl" });
 
-  // Pull entitlement state. We do an "optimistic" pre-check so blatantly
-  // over-quota users don't even start an upload-to-Groq.
+  // Pull entitlement state. Non-public hosts (Vercel preview URLs, localhost)
+  // bypass the quota entirely so JC can use the app for personal work.
   const state = await getUserProState(userId);
+  const effectivePro = state.pro || !isLimitedHost(req);
   const usedSeconds = cloudSecondsToday(state);
-  if (!state.pro && usedSeconds >= FREE_TIER_SECONDS) {
+  if (!effectivePro && usedSeconds >= FREE_TIER_SECONDS) {
     await safeDelete(blobUrl);
     return json(res, 402, {
       error: "Free cloud minutes exhausted",
@@ -52,7 +54,7 @@ export default async function handler(req, res) {
   // (A lying client still gets caught by the post-charge below; their
   // *next* request will be blocked by the check above.)
   const claimedDuration = Number(body.durationSec) || 0;
-  if (!state.pro && claimedDuration > 0 && usedSeconds + claimedDuration > FREE_TIER_SECONDS) {
+  if (!effectivePro && claimedDuration > 0 && usedSeconds + claimedDuration > FREE_TIER_SECONDS) {
     await safeDelete(blobUrl);
     return json(res, 402, {
       error: "File would exceed free tier",
@@ -140,8 +142,10 @@ export default async function handler(req, res) {
   const durationSec = Number(result.duration || 0);
 
   // Update usage AFTER successful transcription so failures don't count.
+  // Unlimited-host users skip counting so their usage doesn't accumulate
+  // against the limited torrolabs.com persona of the same Clerk account.
   let usageAfter = null;
-  if (!state.pro && durationSec > 0) {
+  if (!effectivePro && durationSec > 0) {
     try { usageAfter = await addCloudSeconds(userId, Math.ceil(durationSec)); }
     catch (_) {}
   }
@@ -151,8 +155,8 @@ export default async function handler(req, res) {
     chunks,
     duration: durationSec,
     language: result.language || null,
-    pro: state.pro,
-    usage: state.pro ? null : {
+    pro: effectivePro,
+    usage: effectivePro ? null : {
       used: usageAfter ?? usedSeconds,
       limit: FREE_TIER_SECONDS,
     },

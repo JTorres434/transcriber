@@ -7,6 +7,7 @@ import {
   verifyClerkSession,
   getUserProState,
   incrementSummaryCount,
+  isLimitedHost,
   json,
   readJsonBody,
 } from "./_lib.js";
@@ -56,9 +57,11 @@ export default async function handler(req, res) {
     });
   }
 
-  // Check entitlement
+  // Check entitlement. Non-public hosts (Vercel preview, localhost) bypass
+  // the quota entirely — same pattern as transcribe-cloud.
   const state = await getUserProState(userId);
-  if (!state.pro) {
+  const effectivePro = state.pro || !isLimitedHost(req);
+  if (!effectivePro) {
     // Free user — enforce monthly cap
     const now = new Date();
     const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -132,9 +135,11 @@ CRITICAL: Output ONLY the JSON object. No markdown fences. No commentary. Keep a
     });
   }
 
-  // Successful summary — increment the free-tier counter only for non-Pro
+  // Successful summary — increment the free-tier counter only for non-Pro.
+  // Unlimited-host users skip counting so their personal use doesn't burn
+  // through the same Clerk account's paid-side counter.
   let usageAfter = null;
-  if (!state.pro) {
+  if (!effectivePro) {
     try { usageAfter = await incrementSummaryCount(userId); } catch {}
   }
 
@@ -143,8 +148,8 @@ CRITICAL: Output ONLY the JSON object. No markdown fences. No commentary. Keep a
     keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
     actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
     chapters: Array.isArray(parsed.chapters) ? parsed.chapters : [],
-    pro: state.pro,
-    usage: state.pro ? null : {
+    pro: effectivePro,
+    usage: effectivePro ? null : {
       used: usageAfter,
       limit: FREE_TIER_LIMIT,
     },

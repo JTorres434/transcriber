@@ -1,7 +1,7 @@
 // POST /api/transcribe-cloud
 // Body: { blobUrl: string, language?: string, task?: "transcribe"|"translate" }
 // Auth: Bearer <clerk_session_jwt>
-// Free tier: 10 minutes of audio per UTC day
+// Free tier: 10 minutes of audio per day (resets midnight Eastern Time)
 // Pro: unlimited
 import { del } from "@vercel/blob";
 import {

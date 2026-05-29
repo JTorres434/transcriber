@@ -42,15 +42,23 @@ export async function getUserProState(userId) {
   }
 }
 
-function currentUtcDay() {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+// Cloud free-tier quota resets at midnight in this timezone.
+// Eastern Time auto-handles EST/EDT.
+const QUOTA_TIMEZONE = "America/New_York";
+
+function currentDay() {
+  // en-CA formats as YYYY-MM-DD natively, so we get a clean ISO-style key
+  // anchored to the configured timezone (auto-handles DST).
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: QUOTA_TIMEZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 }
 
-// Returns how many cloud-transcription seconds the user has used today (UTC,
-// auto-resetting at midnight UTC).
+// Returns how many cloud-transcription seconds the user has used today
+// (auto-resets at midnight Eastern Time).
 export function cloudSecondsToday(state) {
-  if (state.cloudDay !== currentUtcDay()) return 0;
+  if (state.cloudDay !== currentDay()) return 0;
   return state.cloudSeconds || 0;
 }
 
@@ -58,7 +66,7 @@ export function cloudSecondsToday(state) {
 export async function addCloudSeconds(userId, seconds) {
   const user = await clerk.users.getUser(userId);
   const meta = user.publicMetadata || {};
-  const today = currentUtcDay();
+  const today = currentDay();
   const baseline = meta.cloudDay === today ? (meta.cloudSeconds || 0) : 0;
   await clerk.users.updateUserMetadata(userId, {
     publicMetadata: {

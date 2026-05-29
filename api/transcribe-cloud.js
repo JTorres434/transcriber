@@ -113,6 +113,14 @@ export default async function handler(req, res) {
   if (!groqRes.ok) {
     const text = await groqRes.text().catch(() => "");
     await safeDelete(blobUrl);
+    // Groq's Whisper endpoint caps each request at 25 MB. The client compresses
+    // to mono 32 kbps MP3 before upload, so this should rarely trigger — but
+    // give a clean message in case decoding fell back to the original file.
+    if (groqRes.status === 413 || /request_too_large|Request Entity Too Large/i.test(text)) {
+      return json(res, 413, {
+        error: "This file is too large for cloud transcription. Try Local Fast mode for files this big.",
+      });
+    }
     return json(res, 502, {
       error: "Transcription failed",
       detail: text.slice(0, 400),

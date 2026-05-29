@@ -2146,6 +2146,60 @@ function probeDuration(file) {
   });
 }
 
+// ---- Cloud mode: re-encode audio in the browser before upload ----
+// Groq's Whisper endpoint caps requests at 25 MB. Most real recordings
+// (especially video) exceed that, so we decode → resample to 16 kHz mono →
+// encode as 32 kbps MP3 in the browser. ~13 MB per hour of audio — comfortably
+// under the limit, and Whisper doesn't need higher quality for speech.
+let lamejsModulePromise = null;
+function loadLamejs() {
+  if (!lamejsModulePromise) {
+    lamejsModulePromise = import("https://esm.sh/@breezystack/lamejs@1.2.7")
+      .then(m => m.default || m);
+  }
+  return lamejsModulePromise;
+}
+
+async function compressForCloud(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let decoded;
+  try {
+    decoded = await tmpCtx.decodeAudioData(arrayBuffer.slice(0));
+  } finally {
+    tmpCtx.close();
+  }
+  const targetRate = 16000;
+  const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const offline = new OfflineCtx(1, Math.ceil(decoded.duration * targetRate), targetRate);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;
+  src.connect(offline.destination);
+  src.start();
+  const rendered = await offline.startRendering();
+  const samples = rendered.getChannelData(0);
+
+  const lamejs = await loadLamejs();
+  const encoder = new lamejs.Mp3Encoder(1, targetRate, 32);
+  const int16 = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  const BLOCK = 1152;
+  const mp3Chunks = [];
+  for (let i = 0; i < int16.length; i += BLOCK) {
+    const chunk = int16.subarray(i, Math.min(i + BLOCK, int16.length));
+    const buf = encoder.encodeBuffer(chunk);
+    if (buf.length > 0) mp3Chunks.push(buf);
+    // Yield occasionally so very long files don't freeze the tab
+    if ((i / BLOCK) % 256 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  const tail = encoder.flush();
+  if (tail.length > 0) mp3Chunks.push(tail);
+  return new Blob(mp3Chunks, { type: "audio/mpeg" });
+}
+
 // ---- Audio decode (main thread; quick) ----
 let lastWaveformPeaks = null;
 async function decodeAudio(file) {
@@ -3425,15 +3479,34 @@ async function runCloudTranscription() {
     }
   }
 
+  // Compress to mono 32 kbps MP3 in the browser so we stay under Groq's
+  // 25 MB request cap. Also makes the upload much smaller. Fall back to the
+  // original file if decoding fails (e.g. unsupported codec) — Groq may still
+  // accept it if it's small enough on its own.
+  setStatus("Preparing audio…");
+  setProgress(-1, "Preparing audio", currentFile.name, "");
+  startLoadingPhrases(["Reading the audio", "Trimming the fat", "Getting ready", "Almost there"]);
+  let uploadBlob = currentFile;
+  const stem = (currentFile.name || "audio").replace(/\.[^.]+$/, "") || "audio";
+  let uploadName = currentFile.name;
+  try {
+    const mp3 = await compressForCloud(currentFile);
+    uploadBlob = mp3;
+    uploadName = stem + ".mp3";
+    log(`Prepared upload: ${formatBytes(currentFile.size)} → ${formatBytes(mp3.size)}`);
+  } catch (e) {
+    log("Audio prep failed, uploading original: " + (e.message || e), "warn");
+  }
+
   setStatus("Uploading audio…");
-  setProgress(-1, "Uploading audio", currentFile.name, "");
+  setProgress(-1, "Uploading audio", uploadName, "");
   startLoadingPhrases(["Uploading", "Sending to the cloud", "Almost there", "Just a moment"]);
 
   let blobUrl;
   try {
     const { upload } = await import("https://esm.sh/@vercel/blob@0.27.0/client");
     const token = await clerk.session.getToken();
-    const result = await upload(currentFile.name, currentFile, {
+    const result = await upload(uploadName, uploadBlob, {
       access: "public",
       handleUploadUrl: "/api/upload-token",
       clientPayload: token, // we don't actually use this server-side but it's required
@@ -3475,7 +3548,7 @@ async function runCloudTranscription() {
       },
       body: JSON.stringify({
         blobUrl,
-        filename: currentFile?.name || null,
+        filename: uploadName || currentFile?.name || null,
         language: langSel.value || null,
         task: translateToggle.checked ? "translate" : "transcribe",
         durationSec: probedDuration || null,
@@ -3486,6 +3559,16 @@ async function runCloudTranscription() {
       openPaywall(`You've used your free cloud minutes for the month (${Math.round((d.limit||600)/60)} min/mo). Upgrade for unlimited.`);
       stopLoadingPhrases();
       setStatus("Free limit reached");
+      finishRun();
+      return;
+    }
+    if (r.status === 413) {
+      const d = await r.json().catch(() => ({}));
+      const msg = d.error || "This file is too large for cloud mode. Try Local Fast instead.";
+      log(msg, "error");
+      showToast(msg);
+      setStatus("Too large for cloud");
+      stopLoadingPhrases();
       finishRun();
       return;
     }

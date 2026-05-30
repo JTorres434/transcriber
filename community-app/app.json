@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "GK Magalang",
+    "slug": "gk-magalang",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "gkmagalang",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.gkmagalang.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Used to upload payment proof screenshots.",
+        "NSCameraUsageDescription": "Used to take photos of payment receipts."
+      }
+    },
+    "android": {
+      "package": "com.gkmagalang.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2E7D32"
+      },
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image-picker"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
+  }
+}
